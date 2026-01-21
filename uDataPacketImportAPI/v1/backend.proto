@@ -2,7 +2,7 @@ edition = "2023";
 
 package UDataPacketImportAPI.V1;
 
-import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
 import "uDataPacketImportAPI/v1/packet.proto";
 
 /*!
