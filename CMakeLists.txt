@@ -36,12 +36,17 @@ set(PROTO_SRC
     #uDataPacketImportAPI/v1/subscribe_request.proto
     uDataPacketImportAPI/v1/backend.proto)
 
-    #src/proxy.cpp
-    #src/frontend.cpp
-    #src/backend.cpp
+set(APPLICATION_SRC
+    src/proxy.cpp 
+    src/grpcOptions.cpp
+    src/backendOptions.cpp
+    src/frontendOptions.cpp
+    src/proxyOptions.cpp
+    src/frontend.cpp
+    src/backend.cpp)
 
 add_executable(uDataPacketImportProxy
-               src/main.cpp ${PROTO_SRC})
+               src/main.cpp ${APPLICATION_SRC} ${PROTO_SRC})
 set_target_properties(uDataPacketImportProxy PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES 
