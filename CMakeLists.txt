@@ -34,7 +34,7 @@ set(PROTO_SRC
     uDataPacketImportAPI/v1/publish_response.proto
     uDataPacketImportAPI/v1/frontend.proto
     #uDataPacketImportAPI/v1/subscribe_request.proto
-    uDataPacketBroadcastAPI/v1/backend.proto)
+    uDataPacketImportAPI/v1/backend.proto)
 
     #src/proxy.cpp
     #src/frontend.cpp
