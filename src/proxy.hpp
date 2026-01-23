@@ -1,17 +1,33 @@
-#ifndef UDATA_PACKET_IMPORT_PROXY_HPP
-#define UDATA_PACKET_IMPORT_PROXY_HPP
+#ifndef UDATA_PACKET_IMPORT_PROXY_PROXY_HPP
+#define UDATA_PACKET_IMPORT_PROXY_PROXY_HPP
+#include <future>
 #include <memory>
 namespace UDataPacketImportProxy
 {
- class Frontend;
- class Backend;
+ class ProxyOptions;
 }
 namespace UDataPacketImportProxy
 {
+/// @class Proxy
+/// @brief The proxy is an aggregation point.  Publishers send data packets
+///        to the frontend and subscribers read packets from the backend.
+/// @copyright Ben Baker (University of Utah) distributed under the
+///            MIT NO AI license.
 class Proxy
 {
 public:
+    /// @brief Constructs the proxy.
+    explicit Proxy(const ProxyOptions &options);
+    /// @brief Starts the proxy service.
+    [[nodiscard]] std::future<void> start();
+    /// @brief Stops the proxy service. 
+    void stop();
+    /// @brief Destructor.
     ~Proxy();
+
+    Proxy() = delete;
+    Proxy(const Proxy &) = delete;
+    Proxy(Proxy &&) noexcept = delete;
 private:
     class ProxyImpl;
     std::unique_ptr<ProxyImpl> pImpl;

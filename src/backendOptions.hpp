@@ -23,6 +23,11 @@ public:
     /// @result The maximum number of subscribers.
     [[nodiscard]] int getMaximumNumberOfSubscribers() const noexcept;
 
+    /// @brief Sets the queue capacity for any subscriber
+    void setQueueCapacity(int capacity);
+    /// @result The queue capacity.
+    [[nodiscard]] int getQueueCapacity() const noexcept;
+
     /// @brief Destructor.
     ~BackendOptions();
     /// @brief Copy constructor.

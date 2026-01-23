@@ -37,6 +37,7 @@ set(PROTO_SRC
     uDataPacketImportAPI/v1/backend.proto)
 
 set(APPLICATION_SRC
+    src/otelSpdlogSink.cpp
     src/proxy.cpp 
     src/grpcOptions.cpp
     src/backendOptions.cpp

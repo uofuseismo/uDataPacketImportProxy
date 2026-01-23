@@ -21,13 +21,13 @@ public:
     explicit ProxyImpl(const ProxyOptions &options) :
         mOptions(options)
     {   
-        mMaximumImportExportQueueSize = mOptions.getMaximumQueueSize();
+        mImportExportQueueCapacity = mOptions.getQueueCapacity();
         mFrontend
             = std::make_unique<Frontend> (mOptions.getFrontendOptions(),
                                           mAddPacketCallback);
         mBackend
             = std::make_unique<Backend> (mOptions.getBackendOptions());
-        mImportExportQueue.set_capacity(mMaximumImportExportQueueSize);
+        mImportExportQueue.set_capacity(mImportExportQueueCapacity);
     }   
 
     ~ProxyImpl()
@@ -42,7 +42,7 @@ public:
             // Try to ensure there is enough space
             auto approximateSize
                 = static_cast<int> (mImportExportQueue.size());
-            while (approximateSize >= mMaximumImportExportQueueSize)
+            while (approximateSize >= mImportExportQueueCapacity)
             {
                 UDataPacketImportAPI::V1::Packet workSpace;
                 if (!mImportExportQueue.try_pop(workSpace))
@@ -94,7 +94,7 @@ public:
         }
     }
 
-    void start()
+    std::future<void> start()
     {   
 #ifndef NDEBUG
         assert(mBackend);
@@ -104,15 +104,15 @@ public:
         std::this_thread::sleep_for (std::chrono::milliseconds {10});
 
         mKeepRunning = true;
-        mPropagatePacketThread
-            = std::thread(&ProxyImpl::propagatePacketToBackend, this);
+        auto result = std::async(&ProxyImpl::propagatePacketToBackend, this);
         // Technically starting the backend first will let the eager beavers
         // not miss a packet
         // N.B. start constructs the callback server so this can throw
         mBackend->start();
         // N.B. start constructs the callback server so this can throw
         mFrontend->start();
-    }   
+        return result;
+    }
 
     void stop()
     {
@@ -155,9 +155,27 @@ public:
     std::thread mPropagatePacketThread;
     std::unique_ptr<Backend> mBackend{nullptr};
     std::unique_ptr<Frontend> mFrontend{nullptr};
-    size_t mMaximumImportExportQueueSize{8192};
+    size_t mImportExportQueueCapacity{8192};
     std::atomic<bool> mKeepRunning{true};
 };
+
+/// Constructor
+Proxy::Proxy(const ProxyOptions &options) :
+    pImpl(std::make_unique<ProxyImpl> (options))
+{
+}
+
+/// Start the proxy
+std::future<void> Proxy::start()
+{
+    return pImpl->start();
+}
+
+/// Stop the prxoy
+void Proxy::stop()
+{
+    pImpl->stop();
+}
 
 /// Destructor
 Proxy::~Proxy() = default;

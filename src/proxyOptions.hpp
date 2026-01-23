@@ -25,9 +25,9 @@ public:
     [[nodiscard]] BackendOptions getBackendOptions() const;
 
     /// @brief Sets the internal queue size.
-    void setMaximumQueueSize(int maximumQueueSize);
+    void setQueueCapacity(int queueCapacity);
     /// @result The maximum internal queue size.
-    [[nodiscard]] int getMaximumQueueSize() const noexcept;
+    [[nodiscard]] int getQueueCapacity() const noexcept;
 
     /// @brief Destructor.
     ~ProxyOptions();

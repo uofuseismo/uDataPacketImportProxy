@@ -1,13 +1,149 @@
 #include <iostream>
+#include <atomic>
+#include <mutex>
+#include <csignal>
+#ifndef NDEBUG
+#include <cassert>
+#endif
 #include <filesystem>
 #include <spdlog/spdlog.h>
 #include <boost/program_options.hpp>
-
+#include "programOptions.hpp"
+#include "proxy.hpp"
+#include "proxyOptions.hpp"
+#include "otelSpdlogSink.hpp"
 
 namespace
 {
+std::atomic<bool> mInterrupted{false};
+
 void setVerbosityForSPDLOG(const int verbosity);
 std::pair<std::string, bool> parseCommandLineOptions(int argc, char *argv[]);
+
+class ServerImpl
+{
+public:
+    explicit ServerImpl(const ::ProgramOptions &options)
+    {
+        mProxy
+           = std::make_unique<UDataPacketImportProxy::Proxy>
+             (options.proxyOptions); 
+    }
+
+    /// Start the proxy service
+    void start()
+    {
+#ifndef NDEBUG
+        assert(mProxy != nullptr);
+#endif
+        stop();
+        std::this_thread::sleep_for (std::chrono::milliseconds {10});
+        mKeepRunning = true;
+        mFutures.push_back(mProxy->start());
+        handleMainThread();
+    }
+
+    /// Stop the proxy service
+    void stop()
+    {
+        mKeepRunning = false;
+        if (mProxy){mProxy->stop();}
+        for (auto &future : mFutures)
+        { 
+            if (future.valid()){future.get();}
+        }
+    }
+
+    /// Check futures
+    [[nodiscard]]
+    bool checkFuturesOkay(const std::chrono::milliseconds &timeOut)
+    {           
+        bool isOkay{true};
+        for (auto &future : mFutures)
+        {           
+            try     
+            {
+                auto status = future.wait_for(timeOut);
+                if (status == std::future_status::ready)
+                {
+                    future.get();
+                }
+            }
+            catch (const std::exception &e)
+            {
+                spdlog::critical("Fatal error in SEEDLink import: "
+                               + std::string {e.what()});
+                isOkay = false;
+            }
+        }
+        return isOkay;
+    }
+
+    // Calling thread from Run gets stuck here then fails through to
+    // destructor
+    void handleMainThread()
+    {
+        spdlog::debug("Main thread entering waiting loop");
+        catchSignals();
+        {
+            while (!mStopRequested)
+            {
+                if (mInterrupted)
+                {
+                    spdlog::info("SIGINT/SIGTERM signal received!");
+                    mStopRequested = true;
+                    break;
+                }
+                if (!checkFuturesOkay(std::chrono::milliseconds {5}))
+                {   
+                    spdlog::critical(
+                       "Futures exception caught; terminating app");
+                    mStopRequested = true;
+                    break;
+                }   
+                std::unique_lock<std::mutex> lock(mStopMutex);
+                mStopCondition.wait_for(lock,
+                                        std::chrono::milliseconds {100},
+                                        [this]
+                                        {
+                                              return mStopRequested;
+                                        });
+                lock.unlock();
+            }
+        }
+        if (mStopRequested)
+        {
+            spdlog::debug("Stop request received.  Exiting...");
+            stop();
+        }
+    }
+
+    /// Handles sigterm and sigint
+    static void signalHandler(const int )
+    {   
+        mInterrupted = true;
+    }    
+
+    static void catchSignals()
+    {   
+        struct sigaction action;
+        action.sa_handler = signalHandler;
+        action.sa_flags = 0;  
+        sigemptyset(&action.sa_mask);
+        sigaction(SIGINT,  &action, NULL);
+        sigaction(SIGTERM, &action, NULL);
+    }   
+
+//private:
+    mutable std::mutex mStopMutex;
+    ::ProgramOptions mOptions;        
+    std::vector<std::future<void>> mFutures;
+    std::unique_ptr<UDataPacketImportProxy::Proxy> mProxy{nullptr};
+    std::condition_variable mStopCondition;
+    bool mStopRequested{false};
+    std::atomic<bool> mKeepRunning{true};
+};
+
 }
 
 int main(int argc, char *argv[])
@@ -22,10 +158,33 @@ int main(int argc, char *argv[])
     }   
     catch (const std::exception &e) 
     {   
-        spdlog::error(e.what());
+        spdlog::critical(e.what());
         return EXIT_FAILURE;
     }   
 
+    ::ProgramOptions programOptions;
+    try
+    {
+        programOptions = ::parseIniFile(iniFile);
+    } 
+    catch (const std::exception &e)
+    {
+        spdlog::error(e.what());
+        return EXIT_FAILURE;
+    }
+    ::setVerbosityForSPDLOG(programOptions.verbosity);
+ 
+    try
+    {
+        ::ServerImpl server{programOptions};
+        server.start();
+    }
+    catch (const std::exception &e)
+    {
+        spdlog::critical("Proxy service exited with error "
+                       + std::string {e.what()});
+        return EXIT_FAILURE;
+    }
     return EXIT_SUCCESS;
 }
 

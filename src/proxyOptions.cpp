@@ -9,7 +9,7 @@ class ProxyOptions::ProxyOptionsImpl
 public:
     FrontendOptions mFrontendOptions;
     BackendOptions mBackendOptions;
-    int mMaximumQueueSize{8192};
+    int mQueueCapacity{8192};
 };
 
 /// Constructor
@@ -72,16 +72,16 @@ BackendOptions ProxyOptions::getBackendOptions() const
 }
 
 /// Maximum queue size
-void ProxyOptions::setMaximumQueueSize(const int maxQueueSize)
+void ProxyOptions::setQueueCapacity(const int maxQueueCapacity)
 {
-    if (maxQueueSize < 1)
+    if (maxQueueCapacity < 1)
     {
-        throw std::invalid_argument("Maximum queue size must be positive");
+        throw std::invalid_argument("Queue capacity must be positive");
     }
-    pImpl->mMaximumQueueSize = maxQueueSize;
+    pImpl->mQueueCapacity = maxQueueCapacity;
 }
 
-int ProxyOptions::getMaximumQueueSize() const noexcept
+int ProxyOptions::getQueueCapacity() const noexcept
 {
-    return pImpl->mMaximumQueueSize;
+    return pImpl->mQueueCapacity;
 }
