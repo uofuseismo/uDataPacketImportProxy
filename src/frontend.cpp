@@ -7,6 +7,7 @@
 #include <boost/algorithm/string/trim.hpp>
 #include <grpcpp/grpcpp.h>
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 #include "uDataPacketImportAPI/v1/frontend.grpc.pb.h"
 #include "frontend.hpp"
@@ -19,8 +20,7 @@ namespace
 {
 
 bool validatePublisher(const grpc::CallbackServerContext *context,
-                       const std::string &accessToken,
-                       const std::string &peer)
+                       const std::string &accessToken)
 {
     if (accessToken.empty()){return true;}
     for (const auto &item : context->client_metadata())
@@ -29,7 +29,7 @@ bool validatePublisher(const grpc::CallbackServerContext *context,
         {
             if (item.second == accessToken)
             {   
-                spdlog::info("Validated publisher " + peer + "'s token");
+                //spdlog::info("Validated publisher " + peer + "'s token");
                 return true;
             }   
         }
@@ -46,6 +46,7 @@ public:
         grpc::CallbackServerContext *context,
         const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
         UDataPacketImportAPI::V1::PublishResponse *publishResponse,
+        std::shared_ptr<spdlog::logger> &logger,
         const bool isSecured,
         std::atomic<int> *numberOfPublishers,
         std::atomic<bool> *keepRunning
@@ -53,6 +54,7 @@ public:
         mContext(context),
         mPublishResponse(publishResponse),
         mCallback(callback),
+        mLogger(logger),
         mNumberOfPublishers(numberOfPublishers),
         mKeepRunning(keepRunning)
     {
@@ -69,20 +71,29 @@ public:
         if (isSecured && options.getGRPCOptions().getAccessToken())
         {
             auto accessToken = *options.getGRPCOptions().getAccessToken();
-            if (!::validatePublisher(mContext, accessToken, mPeer))
+            if (!::validatePublisher(mContext, accessToken))
             {
-                spdlog::info(mPeer + " rejected");
+                SPDLOG_LOGGER_INFO(mLogger, "Frontend rejected {}", mPeer);
                 grpc::Status status{grpc::StatusCode::UNAUTHENTICATED,
 R"""(
 Publisher must provide access token in x-custom-auth-token header field.
 )"""};
                 Finish(status);
             }
+            else
+            {
+                SPDLOG_LOGGER_INFO(mLogger, "Frontend validated {}", mPeer);
+            }
+        }
+        else
+        {
+            SPDLOG_LOGGER_INFO(mLogger, "{} connected to frontend", mPeer);
         }
         if (mNumberOfPublishers->load() >= mMaximumNumberOfPublishers)
         {
-            spdlog::warn("Frontend rejecting " + mPeer
-                       + " because max number of publishers is hit");
+            SPDLOG_LOGGER_WARN(mLogger,
+                "Frontend rejecting {} because max number of publishers hit",
+                 mPeer);
             grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
                                 "Max publishers hit - try again later"};
             Finish(status);
@@ -95,7 +106,7 @@ Publisher must provide access token in x-custom-auth-token header field.
         }
         else
         {
-            spdlog::warn("Immediately closing RPC subscribe");
+            SPDLOG_LOGGER_WARN(mLogger, "Immediately closing RPC publish");
             Finish(grpc::Status::OK);
         }
     }
@@ -152,8 +163,9 @@ Publisher must provide access token in x-custom-auth-token header field.
                     }
                     catch (const std::exception &e) 
                     {
-                        spdlog::warn(mPeer + " failed to submit packet because "
-                                   + std::string {e.what()});
+                        SPDLOG_LOGGER_WARN(mLogger, 
+                                   "{} failed to submit packet because {}",
+                                   mPeer, std::string {e.what()});
                         mPacketsRejected++;
                     }
                 }
@@ -173,8 +185,9 @@ Publisher must provide access token in x-custom-auth-token header field.
             if (mConsecutiveInvalidMessagesCounter >
                 mMaximumConsecutiveInvalidMessages)
             {
-                spdlog::warn("Frontend rejecting " + mPeer
-                           + " because too many consecutive messages were invalid");
+                SPDLOG_LOGGER_WARN(mLogger,
+                    "Frontend disconnecting {} because it sent too many consecutive invalid messages",
+                    mPeer);
                 grpc::Status status{grpc::StatusCode::INVALID_ARGUMENT,
                         "Too many conseuctive messages were invalid - double check API"};
                 Finish(status);
@@ -194,19 +207,24 @@ Publisher must provide access token in x-custom-auth-token header field.
 
     void OnDone() override 
     {   
-        spdlog::info("Async packet proxy frontend RPC completed for " + mPeer);
+        SPDLOG_LOGGER_INFO(mLogger,
+                           "Async packet proxy frontend RPC completed for {}",
+                           mPeer);
         mNumberOfPublishers->fetch_sub(1);
         delete this;
     }   
 
     void OnCancel() override 
     {   
-        spdlog::info("Async packet proxy frontend RPC canceled by " + mPeer);
+        SPDLOG_LOGGER_INFO(mLogger,
+                           "Async packet proxy frontend RPC canceled by {}",
+                           mPeer);
     }   
 //private:
     grpc::CallbackServerContext *mContext{nullptr};
     std::function<void (UDataPacketImportAPI::V1::Packet &&)> mCallback;
     UDataPacketImportAPI::V1::PublishResponse *mPublishResponse{nullptr};
+    std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::string mPeer;
     UDataPacketImportAPI::V1::Packet mPacket;
     int mConsecutiveInvalidMessagesCounter{0};
@@ -227,10 +245,16 @@ class Frontend::FrontendImpl final :
 public:
     FrontendImpl(
         const FrontendOptions &options,
-        const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback) :
+        const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
+        std::shared_ptr<spdlog::logger> &logger) :
         mOptions(options),
-        mAddPacketCallback(callback)
+        mAddPacketCallback(callback),
+        mLogger(logger)
     {
+        if (mLogger == nullptr)
+        {   
+            mLogger = spdlog::stdout_color_mt("ProxyFrontendConsole");
+        }   
     }
 
     void stop()
@@ -257,7 +281,8 @@ public:
         if (grpcOptions.getServerKey() == std::nullopt ||
             grpcOptions.getServerCertificate() == std::nullopt)
         { 
-            spdlog::info("Initiating non-secured proxy frontend");
+            SPDLOG_LOGGER_INFO(mLogger,
+                               "Initiating non-secured proxy frontend");
             builder.AddListeningPort(address,
                                      grpc::InsecureServerCredentials());
             builder.RegisterService(this);
@@ -265,7 +290,7 @@ public:
         }
         else
         {   
-            spdlog::info("Initiating secured proxy frontend");
+            SPDLOG_LOGGER_INFO(mLogger, "Initiating secured proxy frontend");
             grpc::SslServerCredentialsOptions::PemKeyCertPair keyCertPair
             {
                 *grpcOptions.getServerKey(),        // Private key
@@ -279,7 +304,7 @@ public:
             mSecured = true;
         }
 
-        spdlog::info("Frontend listening on " + address);
+        SPDLOG_LOGGER_INFO(mLogger, "Frontend listening at {}", address);
         mServer = builder.BuildAndStart();
     }
 
@@ -293,6 +318,7 @@ public:
             context,
             mAddPacketCallback,
             publishResponse,
+            mLogger,
             mSecured,
             &mNumberOfPublishers,
             &mKeepRunning);
@@ -311,6 +337,7 @@ public:
 //private:
     FrontendOptions mOptions;
     std::function<void (UDataPacketImportAPI::V1::Packet &&)> mAddPacketCallback;
+    std::shared_ptr<spdlog::logger> mLogger{nullptr};
     bool mSecured{false};
     std::unique_ptr<grpc::Server> mServer{nullptr};
     std::atomic<int> mNumberOfPublishers{0};
@@ -319,8 +346,9 @@ public:
 
 Frontend::Frontend(
     const FrontendOptions &options,
-    const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback) :
-    pImpl(std::make_unique<FrontendImpl> (options, callback))
+    const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
+    std::shared_ptr<spdlog::logger> &logger) :
+    pImpl(std::make_unique<FrontendImpl> (options, callback, logger))
 {
 }
 

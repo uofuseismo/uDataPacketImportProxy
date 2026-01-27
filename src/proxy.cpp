@@ -5,6 +5,7 @@
 #endif
 #include <tbb/concurrent_queue.h>
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include "proxy.hpp"
 #include "proxyOptions.hpp"
 #include "backend.hpp"
@@ -18,15 +19,23 @@ using namespace UDataPacketImportProxy;
 class Proxy::ProxyImpl
 {
 public:
-    explicit ProxyImpl(const ProxyOptions &options) :
-        mOptions(options)
+    explicit ProxyImpl(const ProxyOptions &options,
+                       std::shared_ptr<spdlog::logger> &logger) :
+        mOptions(options),
+        mLogger(logger)
     {   
+        if (mLogger == nullptr)
+        {
+            mLogger = spdlog::stdout_color_mt("ProxyConsole");
+        }
         mImportExportQueueCapacity = mOptions.getQueueCapacity();
         mFrontend
             = std::make_unique<Frontend> (mOptions.getFrontendOptions(),
-                                          mAddPacketCallback);
+                                          mAddPacketCallback,
+                                          mLogger);
         mBackend
-            = std::make_unique<Backend> (mOptions.getBackendOptions());
+            = std::make_unique<Backend>
+              (mOptions.getBackendOptions(), mLogger);
         mImportExportQueue.set_capacity(mImportExportQueueCapacity);
     }   
 
@@ -47,7 +56,9 @@ public:
                 UDataPacketImportAPI::V1::Packet workSpace;
                 if (!mImportExportQueue.try_pop(workSpace))
                 {
-                    spdlog::warn("Failed to pop element from import queue");
+                    SPDLOG_LOGGER_WARN(
+                        mLogger,
+                        "Failed to pop element from import queue");
                     break;
                 }
                 approximateSize = static_cast<int> (mImportExportQueue.size());
@@ -55,13 +66,17 @@ public:
             // Try to add the packet
             if (!mImportExportQueue.try_push(std::move(packet)))
             {
-                spdlog::error("Failed to add packet to import queue");
+                SPDLOG_LOGGER_ERROR(
+                    mLogger,
+                    "Failed to add packet to import queue");
             }
         }
         catch (const std::exception &e) 
         {
-            spdlog::error("Failed to add packet to import queue because "
-                        + std::string {e.what()});
+            SPDLOG_LOGGER_ERROR(
+                mLogger,
+                "Failed to add packet to import queue because {}",
+                std::string {e.what()});
         }
     }
 
@@ -82,9 +97,10 @@ public:
                 }
                 catch (const std::exception &e) 
                 {
-                   spdlog::error(
-                   "Failed to propagate packet to subscription manager because "
-                    + std::string {e.what()});
+                   SPDLOG_LOGGER_ERROR(
+                      mLogger,
+                "Failed to propagate packet to subscription manager because {}",
+                      std::string {e.what()});
                 }
             }
             else
@@ -123,7 +139,7 @@ public:
         // elegant then this will reduce the number of packets being lost.
         if (mFrontend)
         {
-            spdlog::debug("Proxy canceling RPCs on frontend");
+            SPDLOG_LOGGER_DEBUG(mLogger, "Proxy canceling RPCs on frontend");
             mFrontend->stop();
         }
 
@@ -136,13 +152,13 @@ public:
         std::this_thread::sleep_for (std::chrono::milliseconds {25});
         if (mBackend)
         {
-            spdlog::debug("Proxy canceling RPCs on backend");
+            SPDLOG_LOGGER_DEBUG(mLogger, "Proxy canceling RPCs on backend");
             mBackend->stop();
         }
     }
 
-
     ProxyOptions mOptions;
+    std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::function<void (UDataPacketImportAPI::V1::Packet &&)>
         mAddPacketCallback
     {   
@@ -160,8 +176,9 @@ public:
 };
 
 /// Constructor
-Proxy::Proxy(const ProxyOptions &options) :
-    pImpl(std::make_unique<ProxyImpl> (options))
+Proxy::Proxy(const ProxyOptions &options,
+             std::shared_ptr<spdlog::logger> &logger) :
+    pImpl(std::make_unique<ProxyImpl> (options, logger))
 {
 }
 

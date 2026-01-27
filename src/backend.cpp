@@ -1,6 +1,7 @@
 #include <mutex>
 #include <grpcpp/grpcpp.h>
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include <tbb/concurrent_queue.h>
 #include <map>
 #include "backend.hpp"
@@ -36,7 +37,9 @@ bool validateClient(const grpc::CallbackServerContext *context,
 class PacketStream
 {
 public:
-    PacketStream(const int queueCapacity)
+    PacketStream(const int queueCapacity,
+                 std::shared_ptr<spdlog::logger> &logger) :
+        mLogger(logger)
     {
         if (queueCapacity < 1)
         {
@@ -59,7 +62,8 @@ public:
                 UDataPacketImportAPI::V1::Packet workSpace;
                 if (!mQueue.try_pop(workSpace))
                 {
-                    spdlog::warn("Failed to pop element from stream queue");
+                    SPDLOG_LOGGER_WARN(mLogger,
+                                       "Failed to pop element from stream queue");
                     break;
                 }
                 approximateSize = static_cast<int> (mQueue.size());
@@ -68,7 +72,8 @@ public:
         // Try to add the packet
         if (!mQueue.try_push(std::move(packet)))
         {
-            spdlog::error("Failed to add packet to stream queue");
+            SPDLOG_LOGGER_ERROR(mLogger,
+                                 "Failed to add packet to stream queue");
         }
     }
     [[nodiscard]] std::optional<UDataPacketImportAPI::V1::Packet>
@@ -84,6 +89,7 @@ public:
         }
         return result; 
     }
+    std::shared_ptr<spdlog::logger> mLogger{nullptr};
     tbb::concurrent_bounded_queue<UDataPacketImportAPI::V1::Packet> mQueue;
     size_t mQueueCapacity{32};
 };
@@ -91,9 +97,15 @@ public:
 class SubscriptionManager
 {
 public:
-    explicit SubscriptionManager(const int queueCapacity) :
-        mQueueCapacity(queueCapacity)
+    SubscriptionManager(const int queueCapacity,
+                        std::shared_ptr<spdlog::logger> &logger) :
+        mQueueCapacity(queueCapacity),
+        mLogger(logger)
     {
+        if (mLogger == nullptr)
+        {
+            mLogger = spdlog::stdout_color_mt("SubscriptionManagerConsole");
+        }
     }
 
     ~SubscriptionManager()
@@ -119,9 +131,9 @@ public:
         }
         if (nSubscribers > 0)
         {
-            spdlog::info("Subscription manager purged "
-                       + std::to_string (nSubscribers)
-                       + " subscribers");
+            SPDLOG_LOGGER_INFO(mLogger,
+                               "Subscription manager purged {} subscribers",
+                               nSubscribers);
         }
     }
 
@@ -140,7 +152,7 @@ public:
         {
             alreadyExists = false;
             auto packetStream
-                = std::make_unique<::PacketStream> (mQueueCapacity);
+                = std::make_unique<::PacketStream> (mQueueCapacity, mLogger);
             std::pair<uintptr_t, std::unique_ptr<::PacketStream>>
                 newPacketStream{contextMemoryAddress, std::move(packetStream)};
             try
@@ -159,7 +171,7 @@ public:
         {
             if (errorMessage.empty())
             {
-                spdlog::info("Subscribed " + context->peer());
+                SPDLOG_LOGGER_INFO(mLogger, "Subscribed {}", context->peer());
             }
             else
             {
@@ -194,7 +206,8 @@ public:
         }
         if (!exists)
         { 
-            spdlog::warn(context->peer() + " was not subscribed");
+            SPDLOG_LOGGER_WARN(mLogger, "{} was not subscribed",
+                               context->peer());
         }
         else
         {
@@ -217,14 +230,15 @@ public:
             }
             catch (const std::exception &e)
             {
-                spdlog::error(
-                     "Subscription manager failed to enqueue packet because "
-                   + std::string {e.what()}); 
+                SPDLOG_LOGGER_ERROR(mLogger,
+                     "Subscription manager failed to enqueue packet because {}",
+                     std::string {e.what()}); 
             } 
         }
     } 
 
     mutable std::mutex mMutex;
+    std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::map<uintptr_t, std::unique_ptr<::PacketStream>> mSubscribers;
     int mQueueCapacity{32};
     std::atomic<bool> mKeepRunning{true};
@@ -236,12 +250,18 @@ class Backend::BackendImpl :
     public UDataPacketImportAPI::V1::Backend::CallbackService
 {
 public:
-    explicit BackendImpl(const BackendOptions &options) :
-        mOptions(options)
+    explicit BackendImpl(const BackendOptions &options,
+                         std::shared_ptr<spdlog::logger> &logger) :
+        mOptions(options),
+        mLogger(logger)
     {
+        if (mLogger == nullptr)
+        {   
+            mLogger = spdlog::stdout_color_mt("ProxyBackendConsole");
+        }   
         mSubscriptionManager
             = std::make_unique<::SubscriptionManager>
-              (mOptions.getQueueCapacity());
+              (mOptions.getQueueCapacity(), mLogger);
     }
 
     void stop()
@@ -260,7 +280,7 @@ public:
         if (grpcOptions.getServerKey() == std::nullopt ||
             grpcOptions.getServerCertificate() == std::nullopt)
         {
-            spdlog::info("Initiating non-secured proxy backend");
+            SPDLOG_LOGGER_INFO(mLogger, "Initiating non-secured proxy backend");
             builder.AddListeningPort(address,
                                      grpc::InsecureServerCredentials());
             builder.RegisterService(this);
@@ -268,7 +288,7 @@ public:
         }
         else
         {
-            spdlog::info("Initiating secured proxy backend");
+            SPDLOG_LOGGER_INFO(mLogger, "Initiating secured proxy backend");
             grpc::SslServerCredentialsOptions::PemKeyCertPair keyCertPair
             {
                 *grpcOptions.getServerKey(),        // Private key
@@ -282,7 +302,7 @@ public:
             mSecured = true;
         }
 
-        spdlog::info("Backend listening on " + address);
+        SPDLOG_LOGGER_INFO(mLogger, "Backend listening at {}", address);
         mServer = builder.BuildAndStart();
     }
 
@@ -302,6 +322,7 @@ public:
     }   
 
     BackendOptions mOptions;
+    std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::unique_ptr<grpc::Server> mServer{nullptr};
     std::unique_ptr<::SubscriptionManager> mSubscriptionManager{nullptr};
     std::atomic<bool> mKeepRunning{true};
@@ -309,8 +330,9 @@ public:
 };
 
 /// Constructor
-Backend::Backend(const BackendOptions &options) :
-    pImpl(std::make_unique<BackendImpl> (options))
+Backend::Backend(const BackendOptions &options,
+                 std::shared_ptr<spdlog::logger> &logger) :
+    pImpl(std::make_unique<BackendImpl> (options, logger))
 {
 }
 

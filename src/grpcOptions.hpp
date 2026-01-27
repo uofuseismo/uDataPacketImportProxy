@@ -1,5 +1,5 @@
-#ifndef UDATA_PACKET_IMPORT_PROXY_HPP
-#define UDATA_PACKET_IMPORT_PROXY_HPP
+#ifndef UDATA_PACKET_IMPORT_PROXY_GRPC_OPTIONS_HPP
+#define UDATA_PACKET_IMPORT_PROXY_GRPC_OPTIONS_HPP
 #include <string>
 #include <memory>
 #include <filesystem>

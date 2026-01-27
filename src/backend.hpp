@@ -14,7 +14,8 @@ namespace UDataPacketImportProxy
 class Backend
 {
 public:
-    explicit Backend(const BackendOptions &options);
+    Backend(const BackendOptions &options,
+            std::shared_ptr<spdlog::logger> &logger);
     ~Backend();
 
     void stop();

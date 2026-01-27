@@ -211,6 +211,16 @@ UDataPacketImportProxy::ProxyOptions getProxyOptions(
     options.verbosity
         = propertyTree.get<int> ("General.verbosity", options.verbosity);
 
+    // Prometheus
+    uint16_t prometheusPort
+        = propertyTree.get<uint16_t> ("Prometheus.port", 9200);
+    std::string prometheusHost
+        = propertyTree.get<std::string> ("Prometheus.host", "localhost");
+    if (!prometheusHost.empty())
+    {
+        options.prometheusURL = prometheusHost + ":"
+                              + std::to_string(prometheusPort);
+    }
 
     options.proxyOptions = ::getProxyOptions(propertyTree); 
     return options;

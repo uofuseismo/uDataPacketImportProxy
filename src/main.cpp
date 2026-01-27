@@ -7,6 +7,7 @@
 #endif
 #include <filesystem>
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include <boost/program_options.hpp>
 #include "programOptions.hpp"
 #include "proxy.hpp"
@@ -17,17 +18,22 @@ namespace
 {
 std::atomic<bool> mInterrupted{false};
 
-void setVerbosityForSPDLOG(const int verbosity);
-std::pair<std::string, bool> parseCommandLineOptions(int argc, char *argv[]);
+void setVerbosityForSPDLOG(int, std::shared_ptr<spdlog::logger> &);
+[[nodiscard]] std::pair<std::string, bool> parseCommandLineOptions(int, char *[]);
 
 class ServerImpl
 {
 public:
-    explicit ServerImpl(const ::ProgramOptions &options)
+    explicit ServerImpl(const ::ProgramOptions &options,
+                        std::shared_ptr<spdlog::logger> &logger) :
+        mLogger(logger)
     {
+#ifndef NDEUBG
+        assert(mLogger != nullptr);
+#endif
         mProxy
            = std::make_unique<UDataPacketImportProxy::Proxy>
-             (options.proxyOptions); 
+             (options.proxyOptions, mLogger); 
     }
 
     /// Start the proxy service
@@ -71,8 +77,9 @@ public:
             }
             catch (const std::exception &e)
             {
-                spdlog::critical("Fatal error in SEEDLink import: "
-                               + std::string {e.what()});
+                SPDLOG_LOGGER_CRITICAL(mLogger,
+                                       "Fatal error in SEEDLink import: {}",
+                                       std::string {e.what()});
                 isOkay = false;
             }
         }
@@ -83,20 +90,22 @@ public:
     // destructor
     void handleMainThread()
     {
-        spdlog::debug("Main thread entering waiting loop");
+        SPDLOG_LOGGER_DEBUG(mLogger, "Main thread entering waiting loop");
         catchSignals();
         {
             while (!mStopRequested)
             {
                 if (mInterrupted)
                 {
-                    spdlog::info("SIGINT/SIGTERM signal received!");
+                    SPDLOG_LOGGER_INFO(mLogger,
+                                       "SIGINT/SIGTERM signal received!");
                     mStopRequested = true;
                     break;
                 }
                 if (!checkFuturesOkay(std::chrono::milliseconds {5}))
                 {   
-                    spdlog::critical(
+                    SPDLOG_LOGGER_CRITICAL(
+                       mLogger,
                        "Futures exception caught; terminating app");
                     mStopRequested = true;
                     break;
@@ -113,7 +122,7 @@ public:
         }
         if (mStopRequested)
         {
-            spdlog::debug("Stop request received.  Exiting...");
+            SPDLOG_LOGGER_DEBUG(mLogger, "Stop request received.  Exiting...");
             stop();
         }
     }
@@ -137,6 +146,7 @@ public:
 //private:
     mutable std::mutex mStopMutex;
     ::ProgramOptions mOptions;        
+    std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::vector<std::future<void>> mFutures;
     std::unique_ptr<UDataPacketImportProxy::Proxy> mProxy{nullptr};
     std::condition_variable mStopCondition;
@@ -172,17 +182,22 @@ int main(int argc, char *argv[])
         spdlog::error(e.what());
         return EXIT_FAILURE;
     }
-    ::setVerbosityForSPDLOG(programOptions.verbosity);
+
+    auto consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt> (); 
+    auto    logger
+            = std::make_shared<spdlog::logger>
+              (spdlog::logger ("", {consoleSink}));
+    ::setVerbosityForSPDLOG(programOptions.verbosity, logger);
  
     try
     {
-        ::ServerImpl server{programOptions};
+        ::ServerImpl server{programOptions, logger};
         server.start();
     }
     catch (const std::exception &e)
     {
-        spdlog::critical("Proxy service exited with error "
-                       + std::string {e.what()});
+        SPDLOG_LOGGER_CRITICAL(logger, "Proxy service exited with error {}",
+                               std::string {e.what()});
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
@@ -194,15 +209,16 @@ int main(int argc, char *argv[])
 namespace
 {   
     
-void setVerbosityForSPDLOG(const int verbosity)
+void setVerbosityForSPDLOG(const int verbosity,
+                           std::shared_ptr<spdlog::logger> &logger)
 {
     if (verbosity <= 1)
     {
-        spdlog::set_level(spdlog::level::critical);
+        logger->set_level(spdlog::level::critical);
     }
-    if (verbosity == 2){spdlog::set_level(spdlog::level::warn);}
-    if (verbosity == 3){spdlog::set_level(spdlog::level::info);}
-    if (verbosity >= 4){spdlog::set_level(spdlog::level::debug);}
+    if (verbosity == 2){logger->set_level(spdlog::level::warn);}
+    if (verbosity == 3){logger->set_level(spdlog::level::info);}
+    if (verbosity >= 4){logger->set_level(spdlog::level::debug);}
 }
 
 /// Read the program options from the command line

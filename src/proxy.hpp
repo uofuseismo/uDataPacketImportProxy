@@ -2,6 +2,7 @@
 #define UDATA_PACKET_IMPORT_PROXY_PROXY_HPP
 #include <future>
 #include <memory>
+#include <spdlog/spdlog.h>
 namespace UDataPacketImportProxy
 {
  class ProxyOptions;
@@ -17,7 +18,7 @@ class Proxy
 {
 public:
     /// @brief Constructs the proxy.
-    explicit Proxy(const ProxyOptions &options);
+    Proxy(const ProxyOptions &options, std::shared_ptr<spdlog::logger> &logger);
     /// @brief Starts the proxy service.
     [[nodiscard]] std::future<void> start();
     /// @brief Stops the proxy service. 
