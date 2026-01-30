@@ -58,6 +58,7 @@ public:
         mNumberOfPublishers(numberOfPublishers),
         mKeepRunning(keepRunning)
     {
+SPDLOG_LOGGER_INFO(mLogger, "starting rpc");
         mMaximumNumberOfPublishers = options.getMaximumNumberOfPublishers();
         mMaximumConsecutiveInvalidMessages
             = options.getMaximumNumberOfConsecutiveInvalidMessages();
@@ -68,6 +69,15 @@ public:
             mPublishResponse->set_packets_rejected(0);
         }   
         mPeer = mContext->peer();
+        if (mNumberOfPublishers->load() >= mMaximumNumberOfPublishers)
+        {
+            SPDLOG_LOGGER_WARN(mLogger,
+                "Frontend rejecting {} because max number of publishers hit",
+                 mPeer);
+            grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
+                                "Max publishers hit - try again later"};
+            Finish(status);
+        }
         if (isSecured && options.getGRPCOptions().getAccessToken())
         {
             auto accessToken = *options.getGRPCOptions().getAccessToken();
@@ -88,15 +98,6 @@ Publisher must provide access token in x-custom-auth-token header field.
         else
         {
             SPDLOG_LOGGER_INFO(mLogger, "{} connected to frontend", mPeer);
-        }
-        if (mNumberOfPublishers->load() >= mMaximumNumberOfPublishers)
-        {
-            SPDLOG_LOGGER_WARN(mLogger,
-                "Frontend rejecting {} because max number of publishers hit",
-                 mPeer);
-            grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
-                                "Max publishers hit - try again later"};
-            Finish(status);
         }
         // Start
         mNumberOfPublishers->fetch_add(1);
@@ -207,10 +208,10 @@ Publisher must provide access token in x-custom-auth-token header field.
 
     void OnDone() override 
     {   
-        SPDLOG_LOGGER_INFO(mLogger,
-                           "Async packet proxy frontend RPC completed for {}",
-                           mPeer);
         mNumberOfPublishers->fetch_sub(1);
+        SPDLOG_LOGGER_INFO(mLogger,
+            "Async packet proxy frontend RPC completed for {} (number of publishers is now {})",
+            mPeer, mNumberOfPublishers->load());
         delete this;
     }   
 
@@ -239,7 +240,7 @@ Publisher must provide access token in x-custom-auth-token header field.
 
 }
 
-class Frontend::FrontendImpl final :
+class Frontend::FrontendImpl :
     public UDataPacketImportAPI::V1::Frontend::CallbackService
 {
 public:
@@ -324,7 +325,6 @@ public:
             &mKeepRunning);
     }
 
-
     ~FrontendImpl() override
     {
         stop();
@@ -354,7 +354,7 @@ Frontend::Frontend(
 
 /// Starts the frontend
 void Frontend::start()
-{   
+{
     pImpl->start();
 /*
 

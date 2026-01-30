@@ -45,7 +45,8 @@ public:
         stop();
         std::this_thread::sleep_for (std::chrono::milliseconds {10});
         mKeepRunning = true;
-        mFutures.push_back(mProxy->start());
+        auto proxyFutures = mProxy->start();
+        for (auto &p : proxyFutures){mFutures.push_back(std::move(p));}
         handleMainThread();
     }
 

@@ -13,11 +13,11 @@ namespace UDataPacketImportProxy
 }
 namespace UDataPacketImportProxy
 {
-/// @class Frontend
+/// @class Frontend frontend.hpp
 /// @brief Publishers send packets to the proxy's frontend.
 /// @copyright Ben Baker (University of Utah) distributed under the
 ///            MIT NO AI license.
-class Frontend 
+class Frontend
 {
 public:
     /// @brief Constructs the frontend with the given options.

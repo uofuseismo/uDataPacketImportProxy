@@ -108,10 +108,12 @@ public:
                 std::this_thread::sleep_for(timeOut);
             }
         }
+        SPDLOG_LOGGER_DEBUG(mLogger, "Thread exiting propagate packet thread");
     }
 
-    std::future<void> start()
+    std::vector<std::future<void>> start()
     {   
+        std::vector<std::future<void>> result;
 #ifndef NDEBUG
         assert(mBackend);
         assert(mFrontend);
@@ -120,7 +122,9 @@ public:
         std::this_thread::sleep_for (std::chrono::milliseconds {10});
 
         mKeepRunning = true;
-        auto result = std::async(&ProxyImpl::propagatePacketToBackend, this);
+        // Get our propagator thread going before anything else
+        result.push_back(
+            std::async(&ProxyImpl::propagatePacketToBackend, this));
         // Technically starting the backend first will let the eager beavers
         // not miss a packet
         // N.B. start constructs the callback server so this can throw
@@ -132,8 +136,6 @@ public:
 
     void stop()
     {
-        mKeepRunning = false;
-
         // Kill the importers first.  Closing the RPC will force the producers
         // to either fail or repoint to a new endpoint.  If the producers are
         // elegant then this will reduce the number of packets being lost.
@@ -142,9 +144,11 @@ public:
             SPDLOG_LOGGER_DEBUG(mLogger, "Proxy canceling RPCs on frontend");
             mFrontend->stop();
         }
-
-        // Stop propagating packets
-        if (mPropagatePacketThread.joinable()){mPropagatePacketThread.join();}
+        std::this_thread::sleep_for (std::chrono::milliseconds {10});
+ 
+        // Stop the packet propagator thread.  This gives a little more time for
+        // the backend to finish its sends.
+        mKeepRunning = false;
 
         // Now purge the subscribers.  By this point no new messages come in
         // but to help the subsribers out just a bit we'll pause just a moment
@@ -168,7 +172,6 @@ public:
     };  
     tbb::concurrent_bounded_queue<UDataPacketImportAPI::V1::Packet>
         mImportExportQueue;
-    std::thread mPropagatePacketThread;
     std::unique_ptr<Backend> mBackend{nullptr};
     std::unique_ptr<Frontend> mFrontend{nullptr};
     size_t mImportExportQueueCapacity{8192};
@@ -183,7 +186,7 @@ Proxy::Proxy(const ProxyOptions &options,
 }
 
 /// Start the proxy
-std::future<void> Proxy::start()
+std::vector<std::future<void>> Proxy::start()
 {
     return pImpl->start();
 }

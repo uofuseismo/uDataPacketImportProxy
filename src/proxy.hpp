@@ -1,5 +1,6 @@
 #ifndef UDATA_PACKET_IMPORT_PROXY_PROXY_HPP
 #define UDATA_PACKET_IMPORT_PROXY_PROXY_HPP
+#include <vector>
 #include <future>
 #include <memory>
 #include <spdlog/spdlog.h>
@@ -20,7 +21,7 @@ public:
     /// @brief Constructs the proxy.
     Proxy(const ProxyOptions &options, std::shared_ptr<spdlog::logger> &logger);
     /// @brief Starts the proxy service.
-    [[nodiscard]] std::future<void> start();
+    [[nodiscard]] std::vector<std::future<void>> start();
     /// @brief Stops the proxy service. 
     void stop();
     /// @brief Destructor.
@@ -29,6 +30,8 @@ public:
     Proxy() = delete;
     Proxy(const Proxy &) = delete;
     Proxy(Proxy &&) noexcept = delete;
+    Proxy& operator=(const Proxy &) = delete;
+    Proxy& operator=(Proxy &&) noexcept = delete;
 private:
     class ProxyImpl;
     std::unique_ptr<ProxyImpl> pImpl;
