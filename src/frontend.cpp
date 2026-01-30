@@ -19,6 +19,7 @@ using namespace UDataPacketImportProxy;
 namespace
 {
 
+[[nodiscard]]
 bool validatePublisher(const grpc::CallbackServerContext *context,
                        const std::string &accessToken)
 {
@@ -58,7 +59,7 @@ public:
         mNumberOfPublishers(numberOfPublishers),
         mKeepRunning(keepRunning)
     {
-SPDLOG_LOGGER_INFO(mLogger, "starting rpc");
+SPDLOG_LOGGER_INFO(mLogger, "starting frontend rpc");
         mMaximumNumberOfPublishers = options.getMaximumNumberOfPublishers();
         mMaximumConsecutiveInvalidMessages
             = options.getMaximumNumberOfConsecutiveInvalidMessages();
@@ -78,7 +79,8 @@ SPDLOG_LOGGER_INFO(mLogger, "starting rpc");
                                 "Max publishers hit - try again later"};
             Finish(status);
         }
-        if (isSecured && options.getGRPCOptions().getAccessToken())
+        if (isSecured &&
+            options.getGRPCOptions().getAccessToken() != std::nullopt)
         {
             auto accessToken = *options.getGRPCOptions().getAccessToken();
             if (!::validatePublisher(mContext, accessToken))

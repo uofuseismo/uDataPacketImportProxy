@@ -165,7 +165,11 @@ void asyncSubscriber()
         {
             if (ok)
             {   
-                if (mReceivedPackets){mReceivedPackets->push_back(mPacket);} 
+#ifndef NDEBUG
+                assert(mReceivedPackets);
+#endif
+                //std::cout << "yar" << std::endl;
+                mReceivedPackets->push_back(mPacket);
                 StartRead(&mPacket);
             }   
         }   
@@ -197,6 +201,18 @@ void asyncSubscriber()
                  + ":" + std::to_string(BACKEND_PORT);
     auto channel
         = grpc::CreateChannel(address, grpc::InsecureChannelCredentials());
+    auto stub = UDataPacketImportAPI::V1::Backend::NewStub(channel);
+    std::vector<UDataPacketImportAPI::V1::Packet> receivedPackets;
+    Subscriber subscriber(stub.get(), &receivedPackets);
+    auto status = subscriber.await();
+    if (status.ok())
+    {
+        std::cout << "got this many: " << receivedPackets.size() << std::endl;
+    }
+    else
+    {
+        std::cout << "oy" << std::endl;
+    }
 }
 
 TEST_CASE("uDataPacketImportProxy::Proxy", "[streamSelector]")
@@ -213,8 +229,12 @@ TEST_CASE("uDataPacketImportProxy::Proxy", "[streamSelector]")
     auto proxyThread = std::thread(&runProxy);
     std::this_thread::sleep_for(std::chrono::milliseconds {50});
 
+    auto subscriberThread = std::thread(&asyncSubscriber);
+    std::this_thread::sleep_for(std::chrono::milliseconds {10});
+
     auto publisherThread = std::thread(&asyncPacketPublisher, allPackets);
     if (publisherThread.joinable()){publisherThread.join();}
     if (proxyThread.joinable()){proxyThread.join();} 
+    if (subscriberThread.joinable()){subscriberThread.join();}    
 }
 

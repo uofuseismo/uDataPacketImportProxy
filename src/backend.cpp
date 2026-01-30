@@ -1,4 +1,5 @@
 #include <mutex>
+#include <queue>
 #include <grpcpp/grpcpp.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -15,9 +16,9 @@ using namespace UDataPacketImportProxy;
 namespace
 {
 
-bool validateClient(const grpc::CallbackServerContext *context,
-                    const std::string &accessToken,
-                    const std::string &peer)
+[[nodiscard]]
+bool validateSubscriber(const grpc::CallbackServerContext *context,
+                        const std::string &accessToken)
 {
     if (accessToken.empty()){return true;}
     for (const auto &item : context->client_metadata())
@@ -26,7 +27,6 @@ bool validateClient(const grpc::CallbackServerContext *context,
         {
             if (item.second == accessToken)
             {
-                spdlog::info("Validated " + peer + "'s token");
                 return true;
             }
         }
@@ -50,7 +50,8 @@ public:
     }
     void enqueuePacket(const UDataPacketImportAPI::V1::Packet &packet)
     {
-        enqueuePacket(std::move(packet));
+        auto copy = packet;
+        enqueuePacket(std::move(copy));
     }
     void enqueuePacket(UDataPacketImportAPI::V1::Packet &&packet)
     {
@@ -227,6 +228,9 @@ public:
         {
             try
             {
+#ifndef NDEBUG
+                assert(subscriber.second != nullptr);
+#endif
                 subscriber.second->enqueuePacket(packet);
             }
             catch (const std::exception &e)
@@ -238,11 +242,270 @@ public:
         }
     } 
 
+    // Get next batch of packets
+    [[nodiscard]] std::vector<UDataPacketImportAPI::V1::Packet> getNextPackets(
+        grpc::CallbackServerContext *context,
+        const int maxPackets)
+    {
+        std::vector<UDataPacketImportAPI::V1::Packet> result;
+        result.reserve(8);
+        if (!mKeepRunning.load()){return result;}
+        std::string errorMessage;
+        bool exists{false};
+        auto contextMemoryAddress = reinterpret_cast<uintptr_t> (context);
+        {   
+        std::lock_guard<std::mutex> lock(mMutex);
+        auto idx = mSubscribers.find(contextMemoryAddress);
+        if (idx != mSubscribers.end())
+        {
+            for (int i = 0; i < maxPackets; ++i)
+            {
+                auto packet = idx->second->dequeuePacket();
+                if (packet)
+                {
+                    result.push_back(std::move(*packet));
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+        else
+        {
+            errorMessage = context->peer()
+                         + " was not found in the subscriber map";
+        }
+        }
+        if (!errorMessage.empty())
+        {
+            throw std::runtime_error(errorMessage);
+        }
+        return result;
+    }
+
     mutable std::mutex mMutex;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::map<uintptr_t, std::unique_ptr<::PacketStream>> mSubscribers;
     int mQueueCapacity{32};
     std::atomic<bool> mKeepRunning{true};
+};
+
+class AsynchronousWriter :
+    public grpc::ServerWriteReactor<UDataPacketImportAPI::V1::Packet>
+{
+public:
+    AsynchronousWriter(
+         const BackendOptions &options,
+         grpc::CallbackServerContext *context,
+         const UDataPacketImportAPI::V1::SubscriptionRequest *request,
+         std::shared_ptr<::SubscriptionManager> &subscriptionManager,
+         std::shared_ptr<spdlog::logger> &logger,
+         const bool isSecured,
+         std::atomic<bool> *keepRunning) :
+         mOptions(options),
+         mContext(context),
+         mSubscriptionManager(subscriptionManager),
+         mLogger(logger),
+         mKeepRunning(keepRunning)
+    {
+        auto maximumNumberOfSubscribers
+            = mOptions.getMaximumNumberOfSubscribers();
+        // Authenticate
+        mPeer = context->peer();
+        if (isSecured &&
+            mOptions.getGRPCOptions().getAccessToken() != std::nullopt)
+        {
+            auto accessToken = *mOptions.getGRPCOptions().getAccessToken();
+            if (!::validateSubscriber(mContext, accessToken))
+            {
+                SPDLOG_LOGGER_INFO(mLogger, "Backend rejected {}", mPeer);
+                grpc::Status status{grpc::StatusCode::UNAUTHENTICATED,
+R"""(
+Subscriber must provide access token in x-custom-auth-token header field.
+)"""};
+                Finish(status);
+            }
+            else
+            {
+                SPDLOG_LOGGER_INFO(mLogger, "Backend validated {}", mPeer);
+            }
+        }
+        else
+        {
+            SPDLOG_LOGGER_INFO(mLogger, "{} connected to backend", mPeer);
+        }
+        if (mSubscriptionManager->getNumberOfSubscribers() >=
+            maximumNumberOfSubscribers)
+        {
+            SPDLOG_LOGGER_WARN(mLogger,
+                "Backend rejecting {} because max number of subscribers hit",
+                 mPeer);
+            grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
+                                "Max subscribers hit - try again later"};
+            Finish(status);
+        }
+        // Subscribe
+        try
+        {
+            SPDLOG_LOGGER_INFO(mLogger, "Subscribing {} to all streams", mPeer);
+            mSubscriptionManager->subscribe(mContext);
+            auto nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
+            SPDLOG_LOGGER_INFO(mLogger,
+                          "Subscription manager is now managing {} subscribers",
+                          nSubscribers);
+        }
+        catch (const std::exception &e)
+        {
+            SPDLOG_LOGGER_WARN(mLogger, "{} failed to subscribe because {}",
+                               mPeer, std::string {e.what()});
+            Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                "Failed to subscribe"));
+        }
+        // Start
+        nextWrite();
+    }
+
+    ~AsynchronousWriter()
+    {
+        SPDLOG_LOGGER_INFO(mLogger, "In destructor");
+    }
+
+
+    void OnWriteDone(bool ok) override
+    {
+        if (!ok)
+        {
+            if (mContext)
+            {
+                if (mContext->IsCancelled())
+                {
+                    return Finish(grpc::Status::CANCELLED);
+                }
+            }
+            return Finish(grpc::Status(grpc::StatusCode::UNKNOWN,
+                                       "Unexpected failure"));
+        }
+        // Packet is flushed; can now safely purge the element to write
+        mWriteInProgress = false;
+        mPacketsQueue.pop();
+        // Start next write
+        nextWrite();
+    }
+
+    // This needs to perform quickly.  I should do blocking work but
+    // this is my last ditch effort to evict the context from the 
+    // subscription manager..
+    void OnDone() override 
+    { 
+        SPDLOG_LOGGER_INFO(mLogger, "Subscribe RPC completed for {}", mPeer);
+        int nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
+        SPDLOG_LOGGER_INFO(mLogger,
+  "Subscribe RPC completed for {}.  Subscription manager is now managing {} subscribers.",
+                           mPeer, nSubscribers);
+        if (mContext)
+        {
+            mSubscriptionManager->unsubscribe(mContext);
+        }
+        delete this;
+    }   
+
+    void OnCancel() override 
+    {   
+        SPDLOG_LOGGER_INFO(mLogger, "Subscribe RPC cancelled for {}", mPeer);
+    }   
+
+private:
+    void nextWrite()
+    {
+        // Keep running either until the server or client quits
+        while (mKeepRunning->load())
+        {
+            // Cancel means we leave now
+            if (mContext->IsCancelled()){break;}
+
+            // Get any remaining packets on the queue on the wire
+            if (!mPacketsQueue.empty() && !mWriteInProgress)
+            {
+                const auto &packet = mPacketsQueue.front();
+                mWriteInProgress = true;
+                StartWrite(&packet);
+                return;
+            }
+
+            // I've cleared the queue and/or I have packets in flight.
+            // Try to get more packets to write while I `wait.'
+            if (mPacketsQueue.empty())
+            {
+                try
+                {
+                    auto packetsBuffer
+                        = mSubscriptionManager->getNextPackets(
+                             mContext,
+                             mMaximumWriteQueueSize);
+                    for (auto &packet : packetsBuffer)
+                    {
+                        if (mPacketsQueue.size() > mMaximumWriteQueueSize)
+                        {
+                            SPDLOG_LOGGER_WARN(mLogger,
+                               "RPC writer queue exceeded - popping element");
+                            mPacketsQueue.pop();
+                        }
+                        mPacketsQueue.push(std::move(packet));
+                    }
+                }
+                catch (const std::exception &e)
+                {
+                    SPDLOG_LOGGER_WARN(mLogger,
+                                       "Failed to get next packets because {}",
+                                       std::string {e.what()});
+                }
+            }
+            // No new packets were acquired and I'm not waiting for a write.
+            // Give me stream manager a break.
+            if (mPacketsQueue.empty() && !mWriteInProgress)
+            {
+                std::this_thread::sleep_for(mTimeOut);
+            }
+        } // Loop on server still running
+        if (mContext)
+        {
+            // The context is still valid so try to remove it from the
+            // subscriptoins.  This can be the case whether the server is
+            // shutting down or the client bailed.
+            mSubscriptionManager->unsubscribe(mContext);
+            if (mContext->IsCancelled())
+            {
+                SPDLOG_LOGGER_INFO(mLogger,
+                 "Terminating acquisition for {} because of client side cancel",
+                    mPeer);
+                Finish(grpc::Status::CANCELLED);
+            }
+            else
+            {
+                SPDLOG_LOGGER_INFO(mLogger,
+                 "Terminating acquisition for {} because of server side cancel",
+                    mPeer);
+                Finish(grpc::Status::OK);
+            }
+        }
+        else
+        {
+            SPDLOG_LOGGER_WARN(mLogger,
+                               "The context for {} has disappeared", mPeer);
+        }
+
+    }
+    BackendOptions mOptions;
+    grpc::CallbackServerContext *mContext{nullptr};
+    std::shared_ptr<::SubscriptionManager> mSubscriptionManager{nullptr};
+    std::shared_ptr<spdlog::logger> mLogger{nullptr};
+    std::atomic<bool> *mKeepRunning{nullptr};
+    std::queue<UDataPacketImportAPI::V1::Packet> mPacketsQueue;
+    std::string mPeer;
+    std::chrono::milliseconds mTimeOut{20};
+    size_t mMaximumWriteQueueSize{128};
+    bool mWriteInProgress{false};
 };
 
 }
@@ -261,7 +524,7 @@ public:
             mLogger = spdlog::stdout_color_mt("ProxyBackendConsole");
         }   
         mSubscriptionManager
-            = std::make_unique<::SubscriptionManager>
+            = std::make_shared<::SubscriptionManager>
               (mOptions.getQueueCapacity(), mLogger);
     }
 
@@ -312,6 +575,19 @@ public:
         return mSubscriptionManager->getNumberOfSubscribers();
     }
 
+    grpc::ServerWriteReactor<UDataPacketImportAPI::V1::Packet> *
+        Subscribe(grpc::CallbackServerContext* context,
+                  const UDataPacketImportAPI::V1::SubscriptionRequest *request) override
+    {
+        return new ::AsynchronousWriter(mOptions,
+                                        context,
+                                        request,
+                                        mSubscriptionManager,
+                                        mLogger,
+                                        mSecured,
+                                        &mKeepRunning);
+    }
+
     ~BackendImpl() override
     {   
         stop();
@@ -325,7 +601,7 @@ public:
     BackendOptions mOptions;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::unique_ptr<grpc::Server> mServer{nullptr};
-    std::unique_ptr<::SubscriptionManager> mSubscriptionManager{nullptr};
+    std::shared_ptr<::SubscriptionManager> mSubscriptionManager{nullptr};
     std::atomic<bool> mKeepRunning{true};
     bool mSecured{false};
 };
