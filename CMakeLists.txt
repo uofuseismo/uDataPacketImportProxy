@@ -33,7 +33,7 @@ set(PROTO_SRC
     uDataPacketImportAPI/v1/packet.proto
     uDataPacketImportAPI/v1/publish_response.proto
     uDataPacketImportAPI/v1/frontend.proto
-    #uDataPacketImportAPI/v1/subscribe_request.proto
+    uDataPacketImportAPI/v1/subscription_request.proto
     uDataPacketImportAPI/v1/backend.proto)
 set(COMMON_SRC
     ${PROTO_SRC}
