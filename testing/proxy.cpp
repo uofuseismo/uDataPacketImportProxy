@@ -23,6 +23,7 @@
 #define FRONTEND_BIND_HOST "0.0.0.0"
 #define FRONTEND_HOST "localhost"
 #define FRONTEND_PORT 58151
+//#define FRONTEND_PORT 50554
 
 #define BACKEND_BIND_HOST "0.0.0.0"
 #define BACKEND_HOST "localhost"
@@ -62,7 +63,7 @@ void runProxy()
 void asyncPacketPublisher(
     const std::vector<UDataPacketImportAPI::V1::Packet> &inputPackets)
 {
-    class Publisher :
+    class Publisher final :
         public grpc::ClientWriteReactor<UDataPacketImportAPI::V1::Packet>
     {   
     public:
@@ -149,7 +150,7 @@ void asyncPacketPublisher(
 
 void asyncSubscriber()
 {
-    class Subscriber :
+    class Subscriber final :
         public grpc::ClientReadReactor<UDataPacketImportAPI::V1::Packet>
     {
     public:

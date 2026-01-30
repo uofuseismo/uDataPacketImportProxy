@@ -59,7 +59,11 @@ public:
         mNumberOfPublishers(numberOfPublishers),
         mKeepRunning(keepRunning)
     {
-SPDLOG_LOGGER_INFO(mLogger, "starting frontend rpc");
+#ifndef NDEBUG
+        assert(mPublishResponse != nullptr);
+        assert(mKeepRunning != nullptr);
+#endif
+        //SPDLOG_LOGGER_INFO(mLogger, "starting frontend rpc");
         mMaximumNumberOfPublishers = options.getMaximumNumberOfPublishers();
         mMaximumConsecutiveInvalidMessages
             = options.getMaximumNumberOfConsecutiveInvalidMessages();
@@ -70,7 +74,8 @@ SPDLOG_LOGGER_INFO(mLogger, "starting frontend rpc");
             mPublishResponse->set_packets_rejected(0);
         }   
         mPeer = mContext->peer();
-        if (mNumberOfPublishers->load() >= mMaximumNumberOfPublishers)
+        auto currentNumberOfPublishers = mNumberOfPublishers->load();
+        if (currentNumberOfPublishers >= mMaximumNumberOfPublishers)
         {
             SPDLOG_LOGGER_WARN(mLogger,
                 "Frontend rejecting {} because max number of publishers hit",
@@ -102,7 +107,10 @@ Publisher must provide access token in x-custom-auth-token header field.
             SPDLOG_LOGGER_INFO(mLogger, "{} connected to frontend", mPeer);
         }
         // Start
-        mNumberOfPublishers->fetch_add(1);
+        currentNumberOfPublishers = mNumberOfPublishers->fetch_add(1);
+        SPDLOG_LOGGER_INFO(mLogger,
+                           "Frontend managing {} publishers",
+                           currentNumberOfPublishers + 1);
         if (mKeepRunning->load())
         {
             StartRead(&mPacket);
@@ -195,22 +203,35 @@ Publisher must provide access token in x-custom-auth-token header field.
                         "Too many conseuctive messages were invalid - double check API"};
                 Finish(status);
             }
-            if (mKeepRunning->load()){StartRead(&mPacket);}
-        }
-        else
-        {
-            if (mPublishResponse)
+            if (mKeepRunning->load())
             {
-                mPublishResponse->set_total_packets(mTotalPackets);
-                mPublishResponse->set_packets_rejected(mPacketsRejected);
+                StartRead(&mPacket);
             }
+            else
+            {
+                grpc::Status status{grpc::StatusCode::UNAVAILABLE,
+                                    "Server shutdown - try again later"};
+                Finish(status);
+            }
+        }
+        else // Not ok
+        {
+#ifndef NDEBUG
+            assert(mPublishResponse != nullptr);
+#endif
+            mPublishResponse->set_total_packets(mTotalPackets);
+            mPublishResponse->set_packets_rejected(mPacketsRejected);
             Finish(grpc::Status::OK);
         }
     } 
 
     void OnDone() override 
-    {   
-        mNumberOfPublishers->fetch_sub(1);
+    { 
+        // Client shutdown - decrement
+        if (mKeepRunning->load())
+        {
+            mNumberOfPublishers->fetch_sub(1);
+        }
         SPDLOG_LOGGER_INFO(mLogger,
             "Async packet proxy frontend RPC completed for {} (number of publishers is now {})",
             mPeer, mNumberOfPublishers->load());
