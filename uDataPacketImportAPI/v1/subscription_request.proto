@@ -5,7 +5,7 @@ package UDataPacketImportAPI.V1;
 /*!
  * Subscription request.
  */
-message SubsriptionRequest {
+message SubscriptionRequest {
     string identifier = 1 [default = ""]; /// A request identifier.
 };
 
