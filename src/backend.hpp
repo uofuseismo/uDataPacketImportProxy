@@ -15,7 +15,7 @@ class Backend
 {
 public:
     Backend(const BackendOptions &options,
-            std::shared_ptr<spdlog::logger> &logger);
+            std::shared_ptr<spdlog::logger> logger);
     ~Backend();
 
     void stop();

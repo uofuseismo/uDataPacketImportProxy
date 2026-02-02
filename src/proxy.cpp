@@ -20,7 +20,7 @@ class Proxy::ProxyImpl
 {
 public:
     explicit ProxyImpl(const ProxyOptions &options,
-                       std::shared_ptr<spdlog::logger> &logger) :
+                       std::shared_ptr<spdlog::logger> logger) :
         mOptions(options),
         mLogger(logger)
     {   
@@ -180,7 +180,7 @@ public:
 
 /// Constructor
 Proxy::Proxy(const ProxyOptions &options,
-             std::shared_ptr<spdlog::logger> &logger) :
+             std::shared_ptr<spdlog::logger> logger) :
     pImpl(std::make_unique<ProxyImpl> (options, logger))
 {
 }

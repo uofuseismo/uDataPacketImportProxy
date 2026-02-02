@@ -13,19 +13,20 @@
 #include "proxy.hpp"
 #include "proxyOptions.hpp"
 #include "otelSpdlogSink.hpp"
+#include "metrics.hpp"
 
 namespace
 {
 std::atomic<bool> mInterrupted{false};
 
-void setVerbosityForSPDLOG(int, std::shared_ptr<spdlog::logger> &);
+void setVerbosityForSPDLOG(int, spdlog::logger *);
 [[nodiscard]] std::pair<std::string, bool> parseCommandLineOptions(int, char *[]);
 
 class ServerImpl
 {
 public:
     explicit ServerImpl(const ::ProgramOptions &options,
-                        std::shared_ptr<spdlog::logger> &logger) :
+                        std::shared_ptr<spdlog::logger> logger) :
         mLogger(logger)
     {
 #ifndef NDEUBG
@@ -185,10 +186,10 @@ int main(int argc, char *argv[])
     }
 
     auto consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt> (); 
-    auto    logger
-            = std::make_shared<spdlog::logger>
-              (spdlog::logger ("", {consoleSink}));
-    ::setVerbosityForSPDLOG(programOptions.verbosity, logger);
+    auto logger
+        = std::make_shared<spdlog::logger>
+          (spdlog::logger ("", {consoleSink}));
+    ::setVerbosityForSPDLOG(programOptions.verbosity, &*logger);
  
     try
     {
@@ -211,8 +212,11 @@ namespace
 {   
     
 void setVerbosityForSPDLOG(const int verbosity,
-                           std::shared_ptr<spdlog::logger> &logger)
+                           spdlog::logger *logger)
 {
+#ifndef NDEBUG
+    assert(logger != nullptr);
+#endif
     if (verbosity <= 1)
     {
         logger->set_level(spdlog::level::critical);

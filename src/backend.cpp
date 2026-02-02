@@ -38,7 +38,7 @@ class PacketStream
 {
 public:
     PacketStream(const int queueCapacity,
-                 std::shared_ptr<spdlog::logger> &logger) :
+                 std::shared_ptr<spdlog::logger> logger) :
         mLogger(logger)
     {
         if (queueCapacity < 1)
@@ -99,7 +99,7 @@ class SubscriptionManager
 {
 public:
     SubscriptionManager(const int queueCapacity,
-                        std::shared_ptr<spdlog::logger> &logger) :
+                        std::shared_ptr<spdlog::logger> logger) :
         mQueueCapacity(queueCapacity),
         mLogger(logger)
     {
@@ -300,7 +300,7 @@ public:
          grpc::CallbackServerContext *context,
          const UDataPacketImportAPI::V1::SubscriptionRequest *request,
          std::shared_ptr<::SubscriptionManager> &subscriptionManager,
-         std::shared_ptr<spdlog::logger> &logger,
+         std::shared_ptr<spdlog::logger> logger,
          const bool isSecured,
          std::atomic<bool> *keepRunning) :
          mOptions(options),
@@ -515,7 +515,7 @@ class Backend::BackendImpl :
 {
 public:
     explicit BackendImpl(const BackendOptions &options,
-                         std::shared_ptr<spdlog::logger> &logger) :
+                         std::shared_ptr<spdlog::logger> logger) :
         mOptions(options),
         mLogger(logger)
     {
@@ -608,7 +608,7 @@ public:
 
 /// Constructor
 Backend::Backend(const BackendOptions &options,
-                 std::shared_ptr<spdlog::logger> &logger) :
+                 std::shared_ptr<spdlog::logger> logger) :
     pImpl(std::make_unique<BackendImpl> (options, logger))
 {
 }

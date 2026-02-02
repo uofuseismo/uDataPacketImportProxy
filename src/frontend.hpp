@@ -23,7 +23,7 @@ public:
     /// @brief Constructs the frontend with the given options.
     Frontend(const FrontendOptions &options,
              const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
-             std::shared_ptr<spdlog::logger> &logger);
+             std::shared_ptr<spdlog::logger> logger);
  
     /// @brief Starts the frontend.
     void start();

@@ -47,7 +47,7 @@ public:
         grpc::CallbackServerContext *context,
         const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
         UDataPacketImportAPI::V1::PublishResponse *publishResponse,
-        std::shared_ptr<spdlog::logger> &logger,
+        std::shared_ptr<spdlog::logger> logger,
         const bool isSecured,
         std::atomic<int> *numberOfPublishers,
         std::atomic<bool> *keepRunning
@@ -270,7 +270,7 @@ public:
     FrontendImpl(
         const FrontendOptions &options,
         const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
-        std::shared_ptr<spdlog::logger> &logger) :
+        std::shared_ptr<spdlog::logger> logger) :
         mOptions(options),
         mAddPacketCallback(callback),
         mLogger(logger)
@@ -370,7 +370,7 @@ public:
 Frontend::Frontend(
     const FrontendOptions &options,
     const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
-    std::shared_ptr<spdlog::logger> &logger) :
+    std::shared_ptr<spdlog::logger> logger) :
     pImpl(std::make_unique<FrontendImpl> (options, callback, logger))
 {
 }

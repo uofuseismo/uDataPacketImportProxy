@@ -19,7 +19,7 @@ class Proxy
 {
 public:
     /// @brief Constructs the proxy.
-    Proxy(const ProxyOptions &options, std::shared_ptr<spdlog::logger> &logger);
+    Proxy(const ProxyOptions &options, std::shared_ptr<spdlog::logger> logger);
     /// @brief Starts the proxy service.
     [[nodiscard]] std::vector<std::future<void>> start();
     /// @brief Stops the proxy service. 

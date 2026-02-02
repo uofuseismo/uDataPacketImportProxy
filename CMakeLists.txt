@@ -63,7 +63,7 @@ target_link_libraries(uDataPacketImportProxy
                       PRIVATE gRPC::grpc
                               gRPC::grpc++
                               protobuf::libprotobuf
-                              opentelemetry-cpp::prometheus_exporter
+                              opentelemetry-cpp::otlp_http_log_record_exporter
                               spdlog::spdlog_header_only
                               TBB::tbb
                               Boost::headers
