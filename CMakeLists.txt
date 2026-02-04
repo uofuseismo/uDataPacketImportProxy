@@ -77,13 +77,13 @@ target_include_directories(uDataPacketImportProxy
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
                           )
 target_link_libraries(uDataPacketImportProxy
+                      PUBLIC TBB::tbb
                       PRIVATE gRPC::grpc
                               gRPC::grpc++
                               protobuf::libprotobuf
                               opentelemetry-cpp::otlp_http_log_record_exporter
                               opentelemetry-cpp::otlp_http_metric_exporter
                               spdlog::spdlog_header_only
-                              TBB::tbb
                               Boost::headers
                               Boost::program_options
                               Threads::Threads)
@@ -126,6 +126,7 @@ set_target_properties(unitTests PROPERTIES
                       CXX_STANDARD_REQUIRED YES
                       CXX_EXTENSIONS NO)
 target_link_libraries(unitTests
+                      PRIVATE
                       gRPC::grpc
                       gRPC::grpc++
                       #gRPC::grpcpp_otel_plugin
