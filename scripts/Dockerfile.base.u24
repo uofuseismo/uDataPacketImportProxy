@@ -72,8 +72,6 @@ RUN wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRO
 #     rm -r /opt/intel/oneapi/ccl &&\
 #     rm -r /opt/intel/oneapi/compiler
 
-ENV TBB_DIR=/opt/intel/oneapi/tbb/latest/lib/cmake/
-
 # Usually good to have zlib and I need boost but not everything in dev-all
 WORKDIR /home/ubuntu
 
@@ -187,4 +185,6 @@ ENV absl_DIR=/usr/local/grpc/lib/cmake/
 ENV utf8_DIR=/usr/local/grpc/lib/cmake/
 ENV utf8_range_DIR=/usr/local/grpc/lib/cmake/
 ENV Protobuf_DIR=/usr/local/grpc/lib/cmake/
+ENV TBB_DIR=/opt/intel/oneapi/tbb/latest/lib/cmake/
+ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${TBB_DIR}
 

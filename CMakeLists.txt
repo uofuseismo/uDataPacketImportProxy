@@ -158,6 +158,29 @@ install(TARGETS uDataPacketImportProxy
         COMPONENT applications)
 
 ##########################################################################################
+#                                        Containers                                      #
+##########################################################################################
+include(CPackComponent)
+if (${BUILD_FOR_DEBIAN})
+   message("Will configure debian container")
+   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/scripts/Dockerfile.deb.in
+                  ${CMAKE_CURRENT_BINARY_DIR}/Dockerfile.deb @ONLY)
+   add_custom_target(${PROJECT_NAME}-deb
+                     COMMENT "Creating deb file for ${PROJECT_NAME}"
+                     COMMAND ${CMAKE_CPACK_COMMAND} -G DEB
+                     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} VERBATIM)
+   add_dependencies(${PROJECT_NAME}-deb ${BINARIES})
+   find_program(buildah_EXECUTABLE buildah)
+   if (buildah_EXECUTABLE)
+      add_custom_target(buildah
+                        COMMENT "Preparing the container with buildah"
+                        COMMAND ${buildah_EXECUTABLE} bud -t udatapacketimportproxy:${PROJECT_VERSION} -t udatapacketimportproxy:latest -f ./Dockerfile.deb
+                        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} VERBATIM)
+      add_dependencies(buildah ${PROJECT_NAME}-deb)
+   endif()
+endif()
+
+##########################################################################################
 #                                     CPACK Packaging                                    #
 ##########################################################################################
 include(CPackComponent)
@@ -185,17 +208,17 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
    if (RPMBUILD_PROGRAM)
       list(APPEND CPACK_GENERATOR RPM)
    endif()
-   if (${BUILD_FOR_DEBIAN})
-      find_program(DPKG_PROGRAM dpkg REQUIRED)
-   else()
-      find_program(DPKG_PROGRAM dpkg)
-   endif()
-   if (DPKG_PROGRAM)
-      list(APPEND CPACK_GENERATOR DEB)
-      set(CPACK_DEBIAN_PACKAGE_DEPENDS
-          "${CPACK_DEBIAN_PACKAGE_DEPENDS}" libtbb (>=2022.0.0))
-      set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-   endif()
+   #if (${BUILD_FOR_DEBIAN})
+   #   find_program(DPKG_PROGRAM dpkg REQUIRED)
+   #else()
+   #   find_program(DPKG_PROGRAM dpkg)
+   #endif()
+   #if (DPKG_PROGRAM)
+   #   list(APPEND CPACK_GENERATOR DEB)
+   #   set(CPACK_DEBIAN_PACKAGE_DEPENDS
+   #       "${CPACK_DEBIAN_PACKAGE_DEPENDS}")
+   #   set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+   #endif()
 else()
    message("Unknown operating system")
 endif()
