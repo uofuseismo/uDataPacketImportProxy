@@ -1,5 +1,6 @@
 #include <thread>
 #include <atomic>
+#include <cmath>
 #include <algorithm>
 #ifndef NDEBUG
 #include <cassert>
@@ -424,3 +425,7 @@ void Frontend::stop()
 
 Frontend::~Frontend() = default;
 
+int Frontend::getNumberOfPublishers() const
+{
+    return std::max(0, pImpl->mNumberOfPublishers.load());
+}

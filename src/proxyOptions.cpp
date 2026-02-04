@@ -85,3 +85,4 @@ int ProxyOptions::getQueueCapacity() const noexcept
 {
     return pImpl->mQueueCapacity;
 }
+

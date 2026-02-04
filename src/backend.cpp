@@ -1,15 +1,18 @@
 #include <mutex>
+#include <cmath>
 #include <queue>
+#include <map>
 #include <grpcpp/grpcpp.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <tbb/concurrent_queue.h>
-#include <map>
 #include "backend.hpp"
 #include "backendOptions.hpp"
 #include "grpcOptions.hpp"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 #include "uDataPacketImportAPI/v1/backend.grpc.pb.h"
+//#include "metrics.hpp"
+import metrics;
 
 using namespace UDataPacketImportProxy;
 
@@ -299,14 +302,16 @@ public:
          const BackendOptions &options,
          grpc::CallbackServerContext *context,
          const UDataPacketImportAPI::V1::SubscriptionRequest *request,
-         std::shared_ptr<::SubscriptionManager> &subscriptionManager,
+         std::shared_ptr<::SubscriptionManager> subscriptionManager,
          std::shared_ptr<spdlog::logger> logger,
+         UDataPacketImportProxy::Metrics::MetricsSingleton *metrics,
          const bool isSecured,
          std::atomic<bool> *keepRunning) :
          mOptions(options),
          mContext(context),
          mSubscriptionManager(subscriptionManager),
          mLogger(logger),
+         mMetrics(metrics),
          mKeepRunning(keepRunning)
     {
         auto maximumNumberOfSubscribers
@@ -351,9 +356,16 @@ Subscriber must provide access token in x-custom-auth-token header field.
             SPDLOG_LOGGER_INFO(mLogger, "Subscribing {} to all streams", mPeer);
             mSubscriptionManager->subscribe(mContext);
             auto nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
+            auto utilization
+                = static_cast<double> (nSubscribers)
+                 /std::max(1, maximumNumberOfSubscribers); 
+            if (mMetrics)
+            {
+                mMetrics->updateSubscriberUtilization(utilization);
+            }
             SPDLOG_LOGGER_INFO(mLogger,
-                          "Subscription manager is now managing {} subscribers",
-                          nSubscribers);
+                          "Backend is now managing {} subscribers (Resource {} pct utilized)",
+                          nSubscribers, utilization*100.0);
         }
         catch (const std::exception &e)
         {
@@ -389,6 +401,10 @@ Subscriber must provide access token in x-custom-auth-token header field.
         // Packet is flushed; can now safely purge the element to write
         mWriteInProgress = false;
         mPacketsQueue.pop();
+        if (mMetrics)
+        {   
+            mMetrics->incrementSentPacketsCounter();
+        }   
         // Start next write
         nextWrite();
     }
@@ -400,9 +416,18 @@ Subscriber must provide access token in x-custom-auth-token header field.
     { 
         SPDLOG_LOGGER_INFO(mLogger, "Subscribe RPC completed for {}", mPeer);
         int nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
+        auto maximumNumberOfSubscribers
+            = mOptions.getMaximumNumberOfSubscribers();
+        auto utilization
+            = static_cast<double> (std::max(0, nSubscribers))
+             /std::max(1, maximumNumberOfSubscribers); 
+        if (mMetrics)
+        {
+            mMetrics->updateSubscriberUtilization(utilization);
+        }
         SPDLOG_LOGGER_INFO(mLogger,
-  "Subscribe RPC completed for {}.  Subscription manager is now managing {} subscribers.",
-                           mPeer, nSubscribers);
+  "Subscribe RPC completed for {}.  Backend is now managing {} subscribers.  (Resource {} pct utilized)",
+                           mPeer, nSubscribers, utilization*100.0);
         if (mContext)
         {
             mSubscriptionManager->unsubscribe(mContext);
@@ -500,6 +525,7 @@ private:
     grpc::CallbackServerContext *mContext{nullptr};
     std::shared_ptr<::SubscriptionManager> mSubscriptionManager{nullptr};
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
+    UDataPacketImportProxy::Metrics::MetricsSingleton *mMetrics{nullptr};
     std::atomic<bool> *mKeepRunning{nullptr};
     std::queue<UDataPacketImportAPI::V1::Packet> mPacketsQueue;
     std::string mPeer;
@@ -579,11 +605,14 @@ public:
         Subscribe(grpc::CallbackServerContext* context,
                   const UDataPacketImportAPI::V1::SubscriptionRequest *request) override
     {
+        UDataPacketImportProxy::Metrics::MetricsSingleton &metrics
+            = UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance();
         return new ::AsynchronousWriter(mOptions,
                                         context,
                                         request,
                                         mSubscriptionManager,
                                         mLogger,
+                                        &metrics,
                                         mSecured,
                                         &mKeepRunning);
     }
@@ -633,4 +662,10 @@ void Backend::enqueuePacket(UDataPacketImportAPI::V1::Packet &&packet)
 {
     auto copy = packet;
     pImpl->mSubscriptionManager->enqueuePacket(std::move(copy));;
+}
+
+/// Number of subscribers
+int Backend::getNumberOfSubscribers() const
+{
+    return std::max(0, pImpl->mSubscriptionManager->getNumberOfSubscribers());
 }

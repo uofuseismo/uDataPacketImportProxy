@@ -32,6 +32,9 @@ public:
     ///        down the frontend.
     void stop();
 
+    /// @result The number of publishers.
+    [[nodiscard]] int getNumberOfPublishers() const;
+
     ~Frontend();
 
     Frontend() = delete;

@@ -49,14 +49,31 @@ set(APPLICATION_SRC
     src/otelSpdlogSink.cpp
     ${COMMON_SRC})
 
-add_executable(uDataPacketImportProxy
-               src/main.cpp ${APPLICATION_SRC} ${PROTO_SRC})
+
+add_executable(uDataPacketImportProxy)
+target_sources(uDataPacketImportProxy
+               PUBLIC src/main.cpp ${APPLICATION_SRC} ${PROTO_SRC}
+               PRIVATE FILE_SET
+                       HEADERS
+                       BASE_DIRS
+                         src
+               PRIVATE FILE_SET
+                       CXX_MODULES
+                       BASE_DIRS
+                         src/modules
+                       FILES
+                         src/modules/logger.cppm
+                         src/modules/programOptions.cppm
+                         src/modules/metrics.cppm
+                         src/modules/otelSpdlogSink.cppm
+                         src/modules/getNow.cppm)
 set_target_properties(uDataPacketImportProxy PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES 
                       CXX_EXTENSIONS NO) 
 target_include_directories(uDataPacketImportProxy
                            #PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
                           )
 target_link_libraries(uDataPacketImportProxy
@@ -64,6 +81,7 @@ target_link_libraries(uDataPacketImportProxy
                               gRPC::grpc++
                               protobuf::libprotobuf
                               opentelemetry-cpp::otlp_http_log_record_exporter
+                              opentelemetry-cpp::otlp_http_metric_exporter
                               spdlog::spdlog_header_only
                               TBB::tbb
                               Boost::headers
@@ -83,11 +101,26 @@ protobuf_generate(TARGET uDataPacketImportProxy
 #                                         Tests                                          #
 ##########################################################################################
 
-add_executable(unitTests
-               testing/proxy.cpp
-               #testing/packetConverter.cpp
-               #testing/seedLink.cpp
-               ${COMMON_SRC})
+add_executable(unitTests)
+target_sources(unitTests
+               PUBLIC testing/proxy.cpp
+                      ${COMMON_SRC}
+               PRIVATE FILE_SET
+                       HEADERS
+                       BASE_DIRS
+                         src 
+               PRIVATE FILE_SET
+                       CXX_MODULES
+                       BASE_DIRS
+                         src/modules
+                       FILES
+                         src/modules/metrics.cppm
+                         src/modules/programOptions.cppm)
+set_target_properties(uDataPacketImportProxy PROPERTIES
+                      CXX_STANDARD 20
+                      CXX_STANDARD_REQUIRED YES 
+                      CXX_EXTENSIONS NO) 
+
 set_target_properties(unitTests PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES
@@ -95,7 +128,8 @@ set_target_properties(unitTests PROPERTIES
 target_link_libraries(unitTests
                       gRPC::grpc
                       gRPC::grpc++
-                      gRPC::grpcpp_otel_plugin
+                      #gRPC::grpcpp_otel_plugin
+                      opentelemetry-cpp::otlp_http_metric_exporter
                       TBB::tbb
                       Threads::Threads
                       Catch2::Catch2 Catch2::Catch2WithMain)

@@ -4,6 +4,7 @@
 #include <future>
 #include <memory>
 #include <spdlog/spdlog.h>
+import metrics;
 namespace UDataPacketImportProxy
 {
  class ProxyOptions;
@@ -19,11 +20,18 @@ class Proxy
 {
 public:
     /// @brief Constructs the proxy.
-    Proxy(const ProxyOptions &options, std::shared_ptr<spdlog::logger> logger);
+    Proxy(const ProxyOptions &options, std::shared_ptr<spdlog::logger> logger,
+          UDataPacketImportProxy::Metrics::MetricsSingleton *metrics);
     /// @brief Starts the proxy service.
     [[nodiscard]] std::vector<std::future<void>> start();
     /// @brief Stops the proxy service. 
     void stop();
+    /// @result The number of packets received.
+    [[nodiscard]] int64_t getNumberOfPacketsReceived() const noexcept;
+    /// @result The number of frontend publishers
+    [[nodiscard]] int getNumberOfPublishers() const noexcept;
+    /// @reuslt The number of backend subscribers. 
+    [[nodiscard]] int getNumberOfSubscribers() const noexcept;
     /// @brief Destructor.
     ~Proxy();
 

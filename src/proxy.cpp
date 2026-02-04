@@ -13,16 +13,21 @@
 #include "frontend.hpp"
 #include "frontendOptions.hpp"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
+import metrics;
 
 using namespace UDataPacketImportProxy;
 
 class Proxy::ProxyImpl
 {
 public:
-    explicit ProxyImpl(const ProxyOptions &options,
-                       std::shared_ptr<spdlog::logger> logger) :
+    explicit ProxyImpl(
+        const ProxyOptions &options,
+        std::shared_ptr<spdlog::logger> logger,
+        UDataPacketImportProxy::Metrics::MetricsSingleton *metrics
+    ) :
         mOptions(options),
-        mLogger(logger)
+        mLogger(logger),
+        mMetrics(metrics)
     {   
         if (mLogger == nullptr)
         {
@@ -64,7 +69,14 @@ public:
                 approximateSize = static_cast<int> (mImportExportQueue.size());
             }
             // Try to add the packet
-            if (!mImportExportQueue.try_push(std::move(packet)))
+            if (mImportExportQueue.try_push(std::move(packet)))
+            {
+                if (mMetrics)
+                {
+                    mMetrics->incrementReceivedPacketsCounter();
+                }
+            }
+            else
             {
                 SPDLOG_LOGGER_ERROR(
                     mLogger,
@@ -163,6 +175,7 @@ public:
 
     ProxyOptions mOptions;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
+    UDataPacketImportProxy::Metrics::MetricsSingleton *mMetrics{nullptr};
     std::function<void (UDataPacketImportAPI::V1::Packet &&)>
         mAddPacketCallback
     {   
@@ -180,8 +193,9 @@ public:
 
 /// Constructor
 Proxy::Proxy(const ProxyOptions &options,
-             std::shared_ptr<spdlog::logger> logger) :
-    pImpl(std::make_unique<ProxyImpl> (options, logger))
+             std::shared_ptr<spdlog::logger> logger,
+             UDataPacketImportProxy::Metrics::MetricsSingleton *metrics) :
+    pImpl(std::make_unique<ProxyImpl> (options, logger, metrics))
 {
 }
 
@@ -199,4 +213,43 @@ void Proxy::stop()
 
 /// Destructor
 Proxy::~Proxy() = default;
+
+/// Number of publishers
+int Proxy::getNumberOfPublishers() const noexcept
+{
+    try 
+    {
+        if (pImpl->mFrontend)
+        {
+            return pImpl->mFrontend->getNumberOfPublishers();
+         }
+    }
+    catch (const std::exception &e)
+    {
+        SPDLOG_LOGGER_ERROR(pImpl->mLogger,
+                            "Failed to get number of publishers because {}",
+                            std::string {e.what()});
+    }
+    return 0;
+}
+
+/// Number of subscribers
+int Proxy::getNumberOfSubscribers() const noexcept
+{
+    try
+    {
+        if (pImpl->mBackend)
+        {
+            return pImpl->mBackend->getNumberOfSubscribers();
+        }
+    }
+    catch (const std::exception &e) 
+    {   
+        SPDLOG_LOGGER_ERROR(pImpl->mLogger,
+                            "Failed to get number of subscribers because {}",
+                            std::string {e.what()});
+    }   
+    return 0;
+}
+
 

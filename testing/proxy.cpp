@@ -19,6 +19,7 @@
 #include "proxyOptions.hpp"
 #include "proxy.hpp"
 #include "packetUtilities.hpp"
+import metrics;
 
 #define FRONTEND_BIND_HOST "0.0.0.0"
 #define FRONTEND_HOST "localhost"
@@ -49,7 +50,9 @@ void runProxy()
     proxyOptions.setBackendOptions(beOptions);    
 
     std::shared_ptr<spdlog::logger> logger{nullptr};
-    UDataPacketImportProxy::Proxy proxy{proxyOptions, logger};
+    auto metrics
+         = &UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance();
+    UDataPacketImportProxy::Proxy proxy{proxyOptions, logger, metrics};
 
     auto futures = proxy.start();
     std::this_thread::sleep_for(std::chrono::seconds {3});

@@ -1,3 +1,7 @@
+import getNow;
+import logger;
+import programOptions;
+import metrics;
 #include <iostream>
 #include <atomic>
 #include <mutex>
@@ -8,33 +12,97 @@
 #include <filesystem>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <opentelemetry/metrics/meter_provider.h>
+#include <opentelemetry/metrics/provider.h>
 #include <boost/program_options.hpp>
-#include "programOptions.hpp"
+//#include "programOptions.hpp"
 #include "proxy.hpp"
 #include "proxyOptions.hpp"
 #include "otelSpdlogSink.hpp"
-#include "metrics.hpp"
+//#include "metrics.hpp"
+//#include "logger.hpp"
 
 namespace
 {
 std::atomic<bool> mInterrupted{false};
 
-void setVerbosityForSPDLOG(int, spdlog::logger *);
+opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+    receivedPacketsCounter;
+opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+    sentPacketsCounter;
+opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+    publisherUtilizationGauge;
+opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+    subscriberUtilizationGauge;
+
 [[nodiscard]] std::pair<std::string, bool> parseCommandLineOptions(int, char *[]);
 
 class ServerImpl
 {
 public:
-    explicit ServerImpl(const ::ProgramOptions &options,
-                        std::shared_ptr<spdlog::logger> logger) :
-        mLogger(logger)
+    explicit ServerImpl(const UDataPacketImportProxy::Options::ProgramOptions &options,
+                        std::shared_ptr<spdlog::logger> logger,
+                        UDataPacketImportProxy::Metrics::MetricsSingleton *metrics) :
+        mLogger(logger),
+        mMetrics(metrics)
     {
-#ifndef NDEUBG
+#ifndef NDEBUG
         assert(mLogger != nullptr);
+        assert(mMetrics != nullptr);
 #endif
         mProxy
            = std::make_unique<UDataPacketImportProxy::Proxy>
-             (options.proxyOptions, mLogger); 
+             (options.proxyOptions, mLogger, mMetrics); 
+        // Metrics
+        if (options.exportMetrics)
+        {
+            // Need a provider from which to get a meter.  This is initialized
+            // once and should last the duration of the application.
+            auto provider 
+                = opentelemetry::metrics::Provider::GetMeterProvider();
+     
+            // Meter will be bound to application (library, module, class, etc.)
+            // so as to identify who is genreating these metrics.
+            auto meter = provider->GetMeter(options.applicationName, "1.2.0");
+
+            // Packets received
+            receivedPacketsCounter
+                = meter->CreateInt64ObservableCounter(
+                  "seismic_data.import.grpc_proxy.client.consumed.packets",
+                  "Number of packets received from telemetry by import proxy",
+                  "{packet}");
+            receivedPacketsCounter->AddCallback(
+                UDataPacketImportProxy::Metrics::observeNumberOfPacketsReceived,
+                nullptr);
+
+            sentPacketsCounter
+                = meter->CreateInt64ObservableCounter(
+                  "seismic_data.import.grpc_proxy.client.sent.packets",
+                  "Number of packets sent to from import proxy backend to subscribers",
+                  "{packet}");
+            sentPacketsCounter->AddCallback(
+                UDataPacketImportProxy::Metrics::observeNumberOfPacketsSent,
+                nullptr);
+
+            publisherUtilizationGauge
+                = meter->CreateDoubleObservableGauge(
+                  "seismic_data.import.grpc_proxy.client.utilization",
+                  "Proportion of publishers submitting packets to the proxy frontend",
+                  "");
+            publisherUtilizationGauge->AddCallback(
+                UDataPacketImportProxy::Metrics::observePublisherUtilization,
+                nullptr);
+
+            subscriberUtilizationGauge
+                = meter->CreateDoubleObservableGauge(
+                  "seismic_data.import.grpc_proxy.server.utilization",
+                  "Proportion of subscribers receiving packets from the proxy backend",
+                  "");
+            subscriberUtilizationGauge->AddCallback(
+                UDataPacketImportProxy::Metrics::observeSubscriberUtilization,
+                nullptr);
+
+        }
     }
 
     /// Start the proxy service
@@ -88,6 +156,36 @@ public:
         return isOkay;
     }
 
+    // Print some summary statistics
+    void printSummary()
+    {
+        if (mOptions.printSummaryInterval.count() <= 0){return;}
+        auto now = UDataPacketImportProxy::Utilities::getNow();
+        if (now > mLastPrintSummary + mOptions.printSummaryInterval)
+        {
+            mLastPrintSummary = now;
+            UDataPacketImportProxy::Metrics::MetricsSingleton &metrics
+               = UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance();
+
+/*
+            auto nPublishers = mProxy->getNumberOfPublishers();
+            auto nSubscribers = mProxy->getNumberOfSubscribers(); 
+            auto nReceived = mObservableReceivedPacketsCounter.load();
+            auto nSent = mObservableSentPacketsCounter.load();
+            auto nPacketsReceived = nReceived - mReportNumberOfPacketsReceived;
+            auto nPacketsSent = nSent - mReportNumberOfPacketsSent;
+            mReportNumberOfPacketsReceived = nReceived;
+            mReportNumberOfPacketsSent = nSent;
+            SPDLOG_LOGGER_INFO(mLogger,
+                               "Current number of publishers {}.  Current number of subscribers {}.  Packets received since last report {}.  Packets sent since last report {}.",
+                               nPublishers,
+                               nSubscribers,
+                               nPacketsReceived,
+                               nPacketsSent);
+*/
+        } 
+    } 
+
     // Calling thread from Run gets stuck here then fails through to
     // destructor
     void handleMainThread()
@@ -104,6 +202,7 @@ public:
                     mStopRequested = true;
                     break;
                 }
+                printSummary();
                 if (!checkFuturesOkay(std::chrono::milliseconds {5}))
                 {   
                     SPDLOG_LOGGER_CRITICAL(
@@ -147,11 +246,18 @@ public:
 
 //private:
     mutable std::mutex mStopMutex;
-    ::ProgramOptions mOptions;        
+    UDataPacketImportProxy::Options::ProgramOptions mOptions;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
+    UDataPacketImportProxy::Metrics::MetricsSingleton *mMetrics{nullptr};
     std::vector<std::future<void>> mFutures;
     std::unique_ptr<UDataPacketImportProxy::Proxy> mProxy{nullptr};
     std::condition_variable mStopCondition;
+    std::chrono::microseconds mLastPrintSummary
+    {
+        UDataPacketImportProxy::Utilities::getNow()
+    };
+    int64_t mReportNumberOfPacketsReceived{0};
+    int64_t mReportNumberOfPacketsSent{0};
     bool mStopRequested{false};
     std::atomic<bool> mKeepRunning{true};
 };
@@ -174,32 +280,70 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }   
 
-    ::ProgramOptions programOptions;
+    UDataPacketImportProxy::Options::ProgramOptions programOptions;
     try
     {
-        programOptions = ::parseIniFile(iniFile);
+        programOptions = UDataPacketImportProxy::Options::parseIniFile(iniFile);
     } 
     catch (const std::exception &e)
     {
         spdlog::error(e.what());
         return EXIT_FAILURE;
     }
+    constexpr int overwrite{1};
+    setenv("OTEL_SERVICE_NAME",
+           programOptions.applicationName.c_str(),
+           overwrite);
 
-    auto consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt> (); 
-    auto logger
-        = std::make_shared<spdlog::logger>
-          (spdlog::logger ("", {consoleSink}));
-    ::setVerbosityForSPDLOG(programOptions.verbosity, &*logger);
+    //auto logger = ::initializeLogger(programOptions);
+    //::setVerbosityForSPDLOG(programOptions.verbosity, &*logger);
+    auto logger = UDataPacketImportProxy::Logger::initialize(programOptions);
+    auto metrics = &UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance();
+    try
+    {
+        if (programOptions.exportMetrics)
+        {
+            SPDLOG_LOGGER_INFO(logger, "Initializing metrics");
+            UDataPacketImportProxy::Metrics::initialize(programOptions);
+        }
+    }
+    catch (const std::exception &e)
+    {
+        SPDLOG_LOGGER_CRITICAL(logger,
+                               "Failed to initialize metrics because {}",
+                               std::string {e.what()});
+        if (programOptions.exportLogs)
+        {
+            UDataPacketImportProxy::Logger::cleanup();
+        }
+        return EXIT_FAILURE;
+    }
  
     try
     {
-        ::ServerImpl server{programOptions, logger};
+        ::ServerImpl server{programOptions, logger, metrics};
         server.start();
+        if (programOptions.exportMetrics)
+        {
+            UDataPacketImportProxy::Metrics::cleanup();
+        }
+        if (programOptions.exportLogs)
+        {
+            UDataPacketImportProxy::Logger::cleanup();
+        }
     }
     catch (const std::exception &e)
     {
         SPDLOG_LOGGER_CRITICAL(logger, "Proxy service exited with error {}",
                                std::string {e.what()});
+        if (programOptions.exportMetrics)
+        {
+            UDataPacketImportProxy::Metrics::cleanup();
+        }
+        if (programOptions.exportLogs)
+        {
+             UDataPacketImportProxy::Logger::cleanup();
+        }
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
@@ -211,6 +355,7 @@ int main(int argc, char *argv[])
 namespace
 {   
     
+/*
 void setVerbosityForSPDLOG(const int verbosity,
                            spdlog::logger *logger)
 {
@@ -225,6 +370,7 @@ void setVerbosityForSPDLOG(const int verbosity,
     if (verbosity == 3){logger->set_level(spdlog::level::info);}
     if (verbosity >= 4){logger->set_level(spdlog::level::debug);}
 }
+*/
 
 /// Read the program options from the command line
 std::pair<std::string, bool> parseCommandLineOptions(int argc, char *argv[])
