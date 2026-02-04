@@ -1,0 +1,190 @@
+# Purpose: Creates the base image for building the seismic data import
+#          C++ software.
+# Usage: podman build -t us8base:latest -f Dockerfile.base.u24
+#   or   buildah bud -t us8base:latest -f Dockerfile.base.u24
+#        buildah push us8base quay.io/uuss/us8base
+
+FROM ubuntu:24.04 AS us8builder
+#FROM intel/oneapi-basekit:2025.3.1-0-devel-ubuntu24.04 AS us8builder
+
+MAINTAINER Ben Baker <ben.baker@utah.edu>
+USER root
+ENV PATH="$PATH:/usr/local/bin:/usr/local/grpc/bin"
+ENV BOOST_ROOT="/usr/local"
+ENV CPLUS_INCLUDE_PATH="/usr/local/include:${CPLUS_INCLUDE_PATH}"
+ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
+
+RUN mkdir -m 0755 -p /etc/apt/keyrings/
+
+# Get the basics
+RUN apt-get update &&\
+    apt-get upgrade -y &&\
+    apt-get autoremove -y &&\
+    apt-get autoclean -y &&\
+    apt-get install -y gpg &&\
+    apt-get install -y wget &&\
+    apt-get install -y rpm &&\
+    apt-get install -y file &&\
+    apt-get install -y git &&\
+    apt-get install -y clang &&\
+    apt-get install -y clang-tidy &&\
+    apt-get install -y curl &&\
+    apt-get install -y libssl-dev &&\
+    apt-get install -y libcurl4-openssl-dev &&\
+    apt-get install -y pkg-config &&\
+    apt-get install -y autoconf &&\
+    apt-get install -y make &&\
+    apt-get install -y cmake &&\
+    apt-get install -y ninja-build &&\
+    apt-get install -y bazel-bootstrap
+
+RUN wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
+| gpg --dearmor | tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null &&\
+    echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" | tee /etc/apt/sources.list.d/oneAPI.list &&\
+    apt-get update -y &&\
+    apt-get install -y intel-oneapi-tbb-devel &&\
+    apt-get install -y intel-oneapi-ipp-devel &&\
+    apt-get install -y intel-oneapi-mkl-devel &&\
+    ls /opt/intel &&\
+    ls /opt/intel/oneapi &&\
+    rm -r /opt/intel/oneapi/compiler &&\
+    rm -r /opt/intel/oneapi/umf &&\
+    rm -r /opt/intel/oneapi/tcm &&\
+    rm -r /opt/intel/oneapi/common &&\
+    rm /opt/intel/oneapi/ipp/202*/lib/*.so* &&\
+    rm /opt/intel/oneapi/mkl/202*/lib/*.so* &&\
+    rm /opt/intel/oneapi/mkl/202*/lib/*intelmpi* &&\
+    rm /opt/intel/oneapi/mkl/202*/lib/*openmpi* &&\
+    rm /opt/intel/oneapi/mkl/202*/lib/*scalapack* &&\
+    rm /opt/intel/oneapi/mkl/202*/lib/*sycl* &&\
+    apt-get install -y libomp-18-dev --fix-missing &&\
+    apt-get autoremove -y &&\
+    apt-get clean -y
+
+#RUN  rm -r /opt/intel/oneapi/vtune &&\
+#     rm -r /opt/intel/oneapi/umf &&\
+#     rm -r /opt/intel/oneapi/tcm &&\
+#     rm -r /opt/intel/oneapi/mpi &&\
+#     rm -r /opt/intel/oneapi/debugger &&\
+#     rm -r /opt/intel/oneapi/common &&\
+#     rm -r /opt/intel/oneapi/dpcpp-ct &&\
+#     rm -r /opt/intel/oneapi/advisor &&\
+#     rm -r /opt/intel/oneapi/ccl &&\
+#     rm -r /opt/intel/oneapi/compiler
+
+ENV TBB_DIR=/opt/intel/oneapi/tbb/latest/lib/cmake/
+
+# Usually good to have zlib and I need boost but not everything in dev-all
+WORKDIR /home/ubuntu
+
+RUN mkdir -p /usr/local/include &&\
+    mkdir -p /usr/local/lib &&\
+    cd /home/ubuntu &&\
+    wget -q https://zlib.net/zlib-1.3.1.tar.gz &&\
+    tar -xf zlib-1.3.1.tar.gz &&\
+    rm zlib-1.3.1.tar.gz &&\
+    cd zlib-1.3.1  &&\
+    CC=clang ./configure --prefix=/usr/local &&\
+    make &&\
+    make install &&\
+    cd /home/ubuntu &&\
+    rm -r zlib-1.3.1 &&\
+    wget -q https://github.com/catchorg/Catch2/archive/refs/tags/v3.12.0.tar.gz &&\
+    tar -xf v3.12.0.tar.gz &&\
+    rm v3.12.0.tar.gz &&\
+    cd Catch2-3.12.0/ &&\
+    cmake -B build -DCMAKE_CXX_COMPILER=clang++ &&\
+    cd build &&\
+    make &&\
+    make install &&\
+    cd /home/ubuntu &&\
+    rm -rf Catch2-3.12.0/ &&\
+    cd /home/ubuntu &&\
+    wget -q https://archives.boost.io/release/1.89.0/source/boost_1_89_0.tar.gz &&\
+    tar -xf boost_1_89_0.tar.gz &&\
+    rm boost_1_89_0.tar.gz &&\
+    cd boost_1_89_0 &&\
+    ./bootstrap.sh --with-toolset=clang &&\
+    ./b2 --with-headers --with-asio --with-beast --with-url --with-program_options --with-date_time &&\
+    ./b2 install --prefix=/usr/local --with-headers --with-asio --with-beast --with-url --with-program_options --with-date_time &&\
+    cd /home/ubuntu &&\
+    rm -rf boost_1_89_0 &&\
+    wget -q https://sqlite.org/2025/sqlite-autoconf-3500400.tar.gz &&\
+    tar -xf sqlite-autoconf-3500400.tar.gz &&\
+    rm sqlite-autoconf-3500400.tar.gz &&\
+    cd sqlite-autoconf-3500400/ &&\
+    CC=clang CXX=clang++ ./configure --prefix=/usr/local &&\
+    make &&\
+    make install &&\
+    rm /usr/local/lib/libsqlite3.so* &&\
+    cd /home/ubuntu &&\
+    rm -rf sqlite-autoconf-3500400/ &&\
+    wget -q https://github.com/gabime/spdlog/archive/refs/tags/v1.17.0.tar.gz &&\
+    tar -xf v1.17.0.tar.gz &&\
+    rm v1.17.0.tar.gz &&\
+    cd spdlog-1.17.0 &&\
+    cmake -B build_static -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DSPDLOG_BUILD_SHARED=OFF &&\
+    cd build_static &&\
+    make &&\
+    make install &&\
+    cd /home/ubuntu &&\
+    rm -rf spdlog-1.17.0 &&\
+    wget -q https://github.com/nlohmann/json/archive/refs/tags/v3.12.0.tar.gz &&\
+    tar -xf v3.12.0.tar.gz &&\
+    rm v3.12.0.tar.gz &&\
+    cd json-3.12.0/ &&\
+    mkdir build &&\
+    cmake -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Release -DJSON_BuildTests=OFF &&\
+    cd build &&\
+    make &&\
+    make install &&\
+    cd /home/ubuntu &&\
+    rm -r json-3.12.0 &&\
+    wget -q https://github.com/CrowCpp/Crow/archive/refs/tags/v1.3.0.tar.gz &&\
+    tar -xf v1.3.0.tar.gz &&\
+    rm v1.3.0.tar.gz &&\
+    cd Crow-1.3.0 &&\
+    cmake -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Release -DCROW_USE_BOOST=ON -DCROW_BUILD_EXAMPLES=OFF -DCROW_BUILD_TESTS=OFF &&\
+    cd build &&\
+    make &&\
+    make install &&\
+    cd /home/ubuntu &&\
+    rm -rf Crow-1.3.0
+    
+# OTel and gRPC is a bit circular.  I want to export metrics/logs with grpc.  
+# To do this I need to build otel with grpc.  But I need to first build gprc
+# without otel.  I can't figure out how to make this work.  I might need to 
+# learn bazel.  Until then, we http it.
+#ENV gRPC_DIR=/usr/local/grpc_no_otel/lib/cmake/
+#ENV absl_DIR=/usr/local/grpc_no_otel/lib/cmake/
+#ENV utf8_DIR=/usr/local/grpc_no_otel/lib/cmake/
+#ENV utf8_range_DIR=/usr/local/grpc_no_otel/lib/cmake/
+#ENV Protobuf_DIR=/usr/local/grpc_no_otel/lib/cmake/
+
+RUN cd /home/ubuntu &&\
+    wget https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.24.0.tar.gz &&\
+    tar -xf v1.24.0.tar.gz &&\
+    rm v1.24.0.tar.gz &&\
+    cd opentelemetry-cpp-1.24.0 &&\
+    cmake -B build -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release -DWITH_PROMETHEUS=OFF -DCMAKE_CXX_COMPILER=clang++ -DWITH_EXAMPLES=OFF -DWITH_ABI_VERSION_1=OFF -DWITH_ABI_VERSION_2=ON -DWITH_OTLP_HTTP=ON &&\
+    cd build &&\
+    make &&\
+    make install &&\
+    cd /home/ubuntu &&\
+    rm -r opentelemetry-cpp-1.24.0 &&\
+    git clone --recurse-submodules -b v1.76.0 --depth 1 --shallow-submodules https://github.com/grpc/grpc &&\
+    cd grpc &&\
+    mkdir build &&\
+    cmake -B build -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_CXX_STANDARD=17 -DgRPC_INSTALL=ON -DgRPC_BUILD_TESTS=OFF -DgRPC_BUILD_GRPCPP_OTEL_PLUGIN=ON -DCMAKE_INSTALL_PREFIX=/usr/local/grpc &&\
+    cd build &&\
+    make -j 8 &&\
+    make install &&\
+    cd /home/ubuntu &&\
+    rm -rf grpc
+
+ENV gRPC_DIR=/usr/local/grpc/lib/cmake/
+ENV absl_DIR=/usr/local/grpc/lib/cmake/
+ENV utf8_DIR=/usr/local/grpc/lib/cmake/
+ENV utf8_range_DIR=/usr/local/grpc/lib/cmake/
+ENV Protobuf_DIR=/usr/local/grpc/lib/cmake/
+
