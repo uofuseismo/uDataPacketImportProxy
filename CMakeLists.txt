@@ -165,7 +165,7 @@ include(CMakePackageConfigHelpers)
 configure_file(${PROJECT_SOURCE_DIR}/cmake/uDataPacketImportProxy.cmake.in
                uDataPacketImportProxyConfig.cmake @ONLY)
 write_basic_package_version_file(
-   uDataPacketImportProxyConfig.cmake
+   uDataPacketImportProxyConfigVersion.cmake
    VERSION ${PACKAGE_VERSION}
    COMPATIBILITY AnyNewerVersion)
 
