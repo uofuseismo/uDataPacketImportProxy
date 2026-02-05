@@ -68,9 +68,9 @@ set_target_properties(libuDataPacketImportProxy PROPERTIES
                       CXX_EXTENSIONS NO)
 target_include_directories(libuDataPacketImportProxy
                            #PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src/modules>
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src>
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/modules>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
                           )
 target_link_libraries(libuDataPacketImportProxy
                       PUBLIC TBB::tbb
@@ -117,8 +117,8 @@ set_target_properties(uDataPacketImportProxy PROPERTIES
                       CXX_EXTENSIONS NO) 
 target_include_directories(uDataPacketImportProxy
                            #PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src>
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
                           )
 target_link_libraries(uDataPacketImportProxy
                       PUBLIC TBB::tbb
@@ -152,9 +152,9 @@ target_link_libraries(unitTests
                       Threads::Threads
                       Catch2::Catch2 Catch2::Catch2WithMain)
 target_include_directories(unitTests
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src/modules>
+                           #PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src/modules>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>)
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
 add_test(NAME unitTests
          COMMAND unitTests)
 
