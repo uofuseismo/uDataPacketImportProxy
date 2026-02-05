@@ -18,7 +18,7 @@ import metrics;
 //#include "programOptions.hpp"
 #include "proxy.hpp"
 #include "proxyOptions.hpp"
-#include "otelSpdlogSink.hpp"
+//#include "otelSpdlogSink.hpp"
 //#include "metrics.hpp"
 //#include "logger.hpp"
 

@@ -44,9 +44,22 @@ set(COMMON_SRC
     src/proxyOptions.cpp
     src/frontend.cpp
     src/backend.cpp)
+set(HEADER_FILES
+    src/backend.hpp
+    src/frontend.hpp
+    src/grpcOptions.hpp
+    src/proxy.hpp
+    src/backendOptions.hpp
+    src/frontendOptions.hpp
+    src/proxyOptions.hpp)
+set(MODULE_FILES
+    src/modules/logger.cppm
+    src/modules/programOptions.cppm
+    src/modules/metrics.cppm
+    src/modules/otelSpdlogSink.cppm
+    src/modules/getNow.cppm)
 
 set(APPLICATION_SRC
-    src/otelSpdlogSink.cpp
     ${COMMON_SRC})
 
 
@@ -57,22 +70,22 @@ target_sources(uDataPacketImportProxy
                        HEADERS
                        BASE_DIRS
                          src
+                       FILES
+                         ${HEADER_FILES}
                PRIVATE FILE_SET
                        CXX_MODULES
                        BASE_DIRS
                          src/modules
                        FILES
-                         src/modules/logger.cppm
-                         src/modules/programOptions.cppm
-                         src/modules/metrics.cppm
-                         src/modules/otelSpdlogSink.cppm
-                         src/modules/getNow.cppm)
+                         ${MODULE_FILES}
+               )
 set_target_properties(uDataPacketImportProxy PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES 
                       CXX_EXTENSIONS NO) 
 target_include_directories(uDataPacketImportProxy
                            #PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src/modules>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
                           )

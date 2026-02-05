@@ -21,7 +21,7 @@ jobs:
       - run:
           name: "Configure code"
           command: |
-            cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local/
+            cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local/ -DCMAKE_CXX_COMPILER=clang++
       - run:
           name: "Build the code"
           command: |
