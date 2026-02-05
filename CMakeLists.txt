@@ -35,15 +35,15 @@ set(PROTO_SRC
     uDataPacketImportAPI/v1/frontend.proto
     uDataPacketImportAPI/v1/subscription_request.proto
     uDataPacketImportAPI/v1/backend.proto)
-set(COMMON_SRC
+set(LIBRARY_SRC
     ${PROTO_SRC}
     src/proxy.cpp 
-    src/grpcOptions.cpp
-    src/backendOptions.cpp
-    src/frontendOptions.cpp
     src/proxyOptions.cpp
+    src/grpcOptions.cpp
+    src/backend.cpp
+    src/backendOptions.cpp
     src/frontend.cpp
-    src/backend.cpp)
+    src/frontendOptions.cpp)
 set(HEADER_FILES
     src/backend.hpp
     src/frontend.hpp
@@ -59,37 +59,20 @@ set(MODULE_FILES
     src/modules/otelSpdlogSink.cppm
     src/modules/getNow.cppm)
 
-set(APPLICATION_SRC
-    ${COMMON_SRC})
-
-
-add_executable(uDataPacketImportProxy)
-target_sources(uDataPacketImportProxy
-               PUBLIC src/main.cpp ${APPLICATION_SRC} ${PROTO_SRC}
-               PRIVATE FILE_SET
-                       HEADERS
-                       BASE_DIRS
-                         src
-                       FILES
-                         ${HEADER_FILES}
-               PRIVATE FILE_SET
-                       CXX_MODULES
-                       BASE_DIRS
-                         src/modules
-                       FILES
-                         ${MODULE_FILES}
-               )
-set_target_properties(uDataPacketImportProxy PROPERTIES
+add_library(libuDataPacketImportProxy)
+add_library(uDataPacketImportProxy::libuDataPacketImportProxy ALIAS libuDataPacketImportProxy)
+set_target_properties(libuDataPacketImportProxy PROPERTIES
+                      OUTPUT_NAME uDataPacketImportProxy
                       CXX_STANDARD 20
-                      CXX_STANDARD_REQUIRED YES 
-                      CXX_EXTENSIONS NO) 
-target_include_directories(uDataPacketImportProxy
+                      CXX_STANDARD_REQUIRED YES
+                      CXX_EXTENSIONS NO)
+target_include_directories(libuDataPacketImportProxy
                            #PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src/modules>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
                           )
-target_link_libraries(uDataPacketImportProxy
+target_link_libraries(libuDataPacketImportProxy
                       PUBLIC TBB::tbb
                       PRIVATE gRPC::grpc
                               gRPC::grpc++
@@ -100,55 +83,87 @@ target_link_libraries(uDataPacketImportProxy
                               Boost::headers
                               Boost::program_options
                               Threads::Threads)
-protobuf_generate(TARGET uDataPacketImportProxy
-                  LANGUAGE cpp
+target_sources(libuDataPacketImportProxy
+               PUBLIC ${LIBRARY_SRC}
+               PUBLIC FILE_SET
+                      HEADERS
+                      BASE_DIRS
+                        src
+                      FILES
+                        ${HEADER_FILES}
+               PUBLIC FILE_SET
+                      CXX_MODULES
+                      BASE_DIRS
+                        src/modules
+                      FILES
+                        ${MODULE_FILES}
+               )
+protobuf_generate(TARGET libuDataPacketImportProxy
+                  LANGUAGE cpp 
                  )
-protobuf_generate(TARGET uDataPacketImportProxy
+protobuf_generate(TARGET libuDataPacketImportProxy
                   LANGUAGE grpc
                   PLUGIN "protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
                   PLUGIN_OPTIONS generate_mock_code=true
                   GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
-                 )
+                 )   
+
+
+
+add_executable(uDataPacketImportProxy src/main.cpp)
+#target_sources(uDataPacketImportProxy
+#               PUBLIC src/main.cpp ${APPLICATION_SRC} ${PROTO_SRC}
+#               PRIVATE FILE_SET
+#                       HEADERS
+#                       BASE_DIRS
+#                         src
+#                       FILES
+#                         ${HEADER_FILES}
+#               PRIVATE FILE_SET
+#                       CXX_MODULES
+#                       BASE_DIRS
+#                         src/modules
+#                       FILES
+#                         ${MODULE_FILES}
+#               )
+set_target_properties(uDataPacketImportProxy PROPERTIES
+                      CXX_STANDARD 20
+                      CXX_STANDARD_REQUIRED YES 
+                      CXX_EXTENSIONS NO) 
+target_include_directories(uDataPacketImportProxy
+                           #PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
+                          )
+target_link_libraries(uDataPacketImportProxy
+                      PUBLIC TBB::tbb
+                      PRIVATE uDataPacketImportProxy::libuDataPacketImportProxy
+                              gRPC::grpc
+                              gRPC::grpc++
+                              opentelemetry-cpp::otlp_http_log_record_exporter
+                              opentelemetry-cpp::otlp_http_metric_exporter
+                              spdlog::spdlog_header_only
+                              Boost::headers
+                              Boost::program_options
+                              Threads::Threads)
 
 ##########################################################################################
 #                                         Tests                                          #
 ##########################################################################################
 
-add_executable(unitTests)
-target_sources(unitTests
-               PUBLIC testing/proxy.cpp
-                      ${COMMON_SRC}
-               PRIVATE FILE_SET
-                       HEADERS
-                       BASE_DIRS
-                         src 
-                       FILES
-                         ${HEADER_FILES}
-               PRIVATE FILE_SET
-                       CXX_MODULES
-                       BASE_DIRS
-                         src/modules
-                       FILES
-                         src/modules/programOptions.cppm
-                         src/modules/metrics.cppm
-                     )
-set_target_properties(uDataPacketImportProxy PROPERTIES
-                      CXX_STANDARD 20
-                      CXX_STANDARD_REQUIRED YES 
-                      CXX_EXTENSIONS NO) 
-
+add_executable(unitTests
+               testing/proxy.cpp)
 set_target_properties(unitTests PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES
                       CXX_EXTENSIONS NO)
 target_link_libraries(unitTests
+                      PUBLIC TBB::tbb
                       PRIVATE
+                      uDataPacketImportProxy::libuDataPacketImportProxy 
                       gRPC::grpc
                       gRPC::grpc++
-                      protobuf::libprotobuf
-                      #gRPC::grpcpp_otel_plugin
                       opentelemetry-cpp::otlp_http_metric_exporter
-                      TBB::tbb
                       Threads::Threads
                       Catch2::Catch2 Catch2::Catch2WithMain)
 target_include_directories(unitTests
@@ -157,15 +172,6 @@ target_include_directories(unitTests
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>)
 add_test(NAME unitTests
          COMMAND unitTests)
-protobuf_generate(TARGET unitTests
-                  LANGUAGE cpp
-                 )
-protobuf_generate(TARGET unitTests
-                  LANGUAGE grpc
-                  PLUGIN "protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
-                  PLUGIN_OPTIONS generate_mock_code=true
-                  GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
-                 )
 
 ##########################################################################################
 #                                      Installation                                      #
