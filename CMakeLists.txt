@@ -201,7 +201,7 @@ if (${BUILD_FOR_DEBIAN})
                      COMMENT "Creating deb file for ${PROJECT_NAME}"
                      COMMAND ${CMAKE_CPACK_COMMAND} -G DEB
                      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} VERBATIM)
-   add_dependencies(${PROJECT_NAME}-deb ${BINARIES})
+   add_dependencies(${PROJECT_NAME}-deb uDataPacketImportProxy libuDataPacketImportProxy)
    find_program(buildah_EXECUTABLE buildah)
    if (buildah_EXECUTABLE)
       add_custom_target(buildah
