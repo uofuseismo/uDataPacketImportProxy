@@ -50,32 +50,33 @@ jobs:
       - store_artifacts:
           path: /tmp/artifacts
   # End compile job
-  docker:
-    - image: cimg/base:2022.09
-  steps:
-    - attach_workspace:
-        at: /tmp/workspace
-    - setup_remote_docker:
-        docker_layer_caching: true
-    - run:
-        name: "Create docker image"
-        command: |
-          cd /tmp/workspace
-          ls
-          # Figure out version from app-name-MAJOR.MINOR.PATCH-Linux.deb
-          debfile=$(ls *Linux.deb)
-          version=$(echo ${debfile} | sed 's/uuDataPacketImportProxy-//g' | sed 's/-Linux.deb//g')
-          echo ${version}
-          docker build -t udatapacketimportproxy:latest -t udatapacketimportproxy:${version} -f ./Dockerfile.deb .
-    - run:
-        name: "Quay login"
-        command: |
-          docker login -u="${QUAY_ROBOT_USER}" -p="${QUAY_ROBOT_PASSWORD}" quay.io
-    - run:
-        name: "Upload docker image to quay"
-        command: |
-          docker tag udatapacketimportproxy quay.io/uuss/udatapacketimportproxy
-          docker push quay.io/uuss/udatapacketimportproxy
+  deploy-job:
+    docker:
+      - image: cimg/base:2022.09
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: "Create docker image"
+          command: |
+            cd /tmp/workspace
+            ls
+            # Figure out version from app-name-MAJOR.MINOR.PATCH-Linux.deb
+            debfile=$(ls *Linux.deb)
+            version=$(echo ${debfile} | sed 's/uuDataPacketImportProxy-//g' | sed 's/-Linux.deb//g')
+            echo ${version}
+            docker build -t udatapacketimportproxy:latest -t udatapacketimportproxy:${version} -f ./Dockerfile.deb .
+      - run:
+          name: "Quay login"
+          command: |
+            docker login -u="${QUAY_ROBOT_USER}" -p="${QUAY_ROBOT_PASSWORD}" quay.io
+      - run:
+          name: "Upload docker image to quay"
+          command: |
+            docker tag udatapacketimportproxy quay.io/uuss/udatapacketimportproxy
+            docker push quay.io/uuss/udatapacketimportproxy
 
 # Orchestrate jobs using workflows
 # See: https://circleci.com/docs/workflows/ & https://circleci.com/docs/configuration-reference/#workflows
