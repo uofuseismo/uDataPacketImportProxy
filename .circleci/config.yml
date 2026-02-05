@@ -65,9 +65,9 @@ jobs:
           command: |
             cd /tmp/workspace
             ls
-            # Figure out version from app-name-MAJOR.MINOR.PATCH-Linux.deb
-            debfile=$(ls *Linux.deb)
-            version=$(echo ${debfile} | sed 's/uuDataPacketImportProxy-//g' | sed 's/-Linux.deb//g')
+            # Figure out version from app-name-MAJOR.MINOR.PATCH-Linux.tar.gz
+            tarfile=$(ls *Linux.tar.gz)
+            version=$(echo ${tarfile} | sed 's/uDataPacketImportProxy-//g' | sed 's/-Linux.tar.gz//g')
             echo ${version}
             docker build -t udatapacketimportproxy:latest -t udatapacketimportproxy:${version} -f ./Dockerfile.deb .
       - run:
