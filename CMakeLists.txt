@@ -59,7 +59,7 @@ set(MODULE_FILES
     src/modules/otelSpdlogSink.cppm
     src/modules/getNow.cppm)
 
-add_library(libuDataPacketImportProxy)
+add_library(libuDataPacketImportProxy STATIC)
 add_library(uDataPacketImportProxy::libuDataPacketImportProxy ALIAS libuDataPacketImportProxy)
 set_target_properties(libuDataPacketImportProxy PROPERTIES
                       OUTPUT_NAME uDataPacketImportProxy
@@ -111,21 +111,6 @@ protobuf_generate(TARGET libuDataPacketImportProxy
 
 
 add_executable(uDataPacketImportProxy src/main.cpp)
-#target_sources(uDataPacketImportProxy
-#               PUBLIC src/main.cpp ${APPLICATION_SRC} ${PROTO_SRC}
-#               PRIVATE FILE_SET
-#                       HEADERS
-#                       BASE_DIRS
-#                         src
-#                       FILES
-#                         ${HEADER_FILES}
-#               PRIVATE FILE_SET
-#                       CXX_MODULES
-#                       BASE_DIRS
-#                         src/modules
-#                       FILES
-#                         ${MODULE_FILES}
-#               )
 set_target_properties(uDataPacketImportProxy PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES 
@@ -176,10 +161,33 @@ add_test(NAME unitTests
 ##########################################################################################
 #                                      Installation                                      #
 ##########################################################################################
+include(CMakePackageConfigHelpers)
+configure_file(${PROJECT_SOURCE_DIR}/cmake/uDataPacketImportProxy.cmake.in
+               uDataPacketImportProxyConfig.cmake @ONLY)
+write_basic_package_version_file(
+   uDataPacketImportProxyConfig.cmake
+   VERSION ${PACKAGE_VERSION}
+   COMPATIBILITY AnyNewerVersion)
+
 include(GNUInstallDirs)
+install(TARGETS libuDataPacketImportProxy
+        EXPORT ${PROJECT_NAME}Targets
+        FILE_SET HEADERS 
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        FILE_SET CXX_MODULES
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        COMPONENT libraries)
 install(TARGETS uDataPacketImportProxy
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT applications)
+export(EXPORT ${PROJECT_NAME}Targets
+       FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake")
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/uDataPacketImportProxyConfig.cmake
+              ${CMAKE_CURRENT_BINARY_DIR}/uDataPacketImportProxyConfigVersion.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/uDataPacketImportProxy)
+
 
 ##########################################################################################
 #                                        Containers                                      #
@@ -220,7 +228,7 @@ set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
 set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
-cpack_add_component(applications
+cpack_add_component(applications libraries
                     DISPLAY_NAME "uDataPacketImportProxy applications")
 set(CPACK_GENERATOR ZIP TGZ)
 if (WIN32)
