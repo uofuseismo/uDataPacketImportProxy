@@ -12,7 +12,9 @@ jobs:
       # Specify the version you desire here
       # See: https://circleci.com/developer/images/image/cimg/base
       - image: quay.io/uuss/us8base
-    resource_class: small
+    # Small is struggling building release types
+    resource_class: medium
+    #small
 
     # Add steps to the job
     # See: https://circleci.com/docs/jobs-steps/#steps-overview & https://circleci.com/docs/configuration-reference/#steps
@@ -21,7 +23,7 @@ jobs:
       - run:
           name: "Configure code"
           command: |
-            cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local/ -DCMAKE_CXX_COMPILER=clang++
+            cmake -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local/ -DBUILD_FOR_DEBIAN=ON
       - run:
           name: "Build the code"
           command: |
@@ -44,8 +46,8 @@ jobs:
              cpack -B /tmp/artifacts TGZ
              rm -rf /tmp/artifacts/_CPack_Packages
              # Later, we're going to build a container so we duplicate some effort
-             mv *-Linux.tar.gz /tmp/workspace/
-             mv Dockerfile.deb /tmp/workspace/
+             cp /tmp/artifacts/*-Linux.tar.gz /tmp/workspace/
+             cp Dockerfile.deb /tmp/workspace/
              ls /tmp/workspace/
       - store_artifacts:
           path: /tmp/artifacts
