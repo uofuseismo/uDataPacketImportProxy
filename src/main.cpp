@@ -159,19 +159,17 @@ public:
     // Print some summary statistics
     void printSummary()
     {
+        if (mMetrics == nullptr){return;}
         if (mOptions.printSummaryInterval.count() <= 0){return;}
         auto now = UDataPacketImportProxy::Utilities::getNow();
         if (now > mLastPrintSummary + mOptions.printSummaryInterval)
         {
             mLastPrintSummary = now;
-            UDataPacketImportProxy::Metrics::MetricsSingleton &metrics
-               = UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance();
 
-/*
             auto nPublishers = mProxy->getNumberOfPublishers();
             auto nSubscribers = mProxy->getNumberOfSubscribers(); 
-            auto nReceived = mObservableReceivedPacketsCounter.load();
-            auto nSent = mObservableSentPacketsCounter.load();
+            auto nReceived = mMetrics->getReceivedPacketsCount();
+            auto nSent = mMetrics->getSentPacketsCount();
             auto nPacketsReceived = nReceived - mReportNumberOfPacketsReceived;
             auto nPacketsSent = nSent - mReportNumberOfPacketsSent;
             mReportNumberOfPacketsReceived = nReceived;
@@ -182,7 +180,6 @@ public:
                                nSubscribers,
                                nPacketsReceived,
                                nPacketsSent);
-*/
         } 
     } 
 
