@@ -122,13 +122,16 @@ target_sources(unitTests
                        HEADERS
                        BASE_DIRS
                          src 
+                       FILES
+                         ${HEADER_FILES}
                PRIVATE FILE_SET
                        CXX_MODULES
                        BASE_DIRS
                          src/modules
                        FILES
+                         src/modules/programOptions.cppm
                          src/modules/metrics.cppm
-                         src/modules/programOptions.cppm)
+                     )
 set_target_properties(uDataPacketImportProxy PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES 
@@ -142,14 +145,16 @@ target_link_libraries(unitTests
                       PRIVATE
                       gRPC::grpc
                       gRPC::grpc++
+                      protobuf::libprotobuf
                       #gRPC::grpcpp_otel_plugin
                       opentelemetry-cpp::otlp_http_metric_exporter
                       TBB::tbb
                       Threads::Threads
                       Catch2::Catch2 Catch2::Catch2WithMain)
 target_include_directories(unitTests
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>)
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src/modules>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>)
 add_test(NAME unitTests
          COMMAND unitTests)
 protobuf_generate(TARGET unitTests
