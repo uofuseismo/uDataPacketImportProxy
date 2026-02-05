@@ -59,7 +59,7 @@ set(MODULE_FILES
     src/modules/otelSpdlogSink.cppm
     src/modules/getNow.cppm)
 
-add_library(libuDataPacketImportProxy STATIC)
+add_library(libuDataPacketImportProxy STATIC ${LIBRARY_SRC})
 add_library(uDataPacketImportProxy::libuDataPacketImportProxy ALIAS libuDataPacketImportProxy)
 set_target_properties(libuDataPacketImportProxy PROPERTIES
                       OUTPUT_NAME uDataPacketImportProxy
@@ -84,7 +84,7 @@ target_link_libraries(libuDataPacketImportProxy
                               Boost::program_options
                               Threads::Threads)
 target_sources(libuDataPacketImportProxy
-               PUBLIC ${LIBRARY_SRC}
+               #PUBLIC ${LIBRARY_SRC}
                PUBLIC FILE_SET
                       HEADERS
                       BASE_DIRS
