@@ -55,7 +55,7 @@ jobs:
           root: /tmp/workspace
           paths:
             - Dockerfile.deb
-            - *Linux.tar.gz
+            - uDataPacketImportProxy-*
     # End steps
   # End compile job
   deploy-job:
