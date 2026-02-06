@@ -54,8 +54,8 @@ public:
         std::atomic<bool> *keepRunning
     ) :
         mContext(context),
-        mPublishResponse(publishResponse),
         mCallback(callback),
+        mPublishResponse(publishResponse),
         mLogger(logger),
         mNumberOfPublishers(numberOfPublishers),
         mKeepRunning(keepRunning)

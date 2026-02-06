@@ -103,8 +103,8 @@ class SubscriptionManager
 public:
     SubscriptionManager(const int queueCapacity,
                         std::shared_ptr<spdlog::logger> logger) :
-        mQueueCapacity(queueCapacity),
-        mLogger(logger)
+        mLogger(logger),
+        mQueueCapacity(queueCapacity)
     {
         if (mLogger == nullptr)
         {
@@ -253,7 +253,6 @@ public:
         std::vector<UDataPacketImportAPI::V1::Packet> result;
         result.reserve(8);
         if (!mKeepRunning.load()){return result;}
-        std::string errorMessage;
         bool exists{false};
         auto contextMemoryAddress = reinterpret_cast<uintptr_t> (context);
         {   
@@ -261,6 +260,7 @@ public:
         auto idx = mSubscribers.find(contextMemoryAddress);
         if (idx != mSubscribers.end())
         {
+            exists = true;
             for (int i = 0; i < maxPackets; ++i)
             {
                 auto packet = idx->second->dequeuePacket();
@@ -276,12 +276,13 @@ public:
         }
         else
         {
-            errorMessage = context->peer()
-                         + " was not found in the subscriber map";
+            exists = false;
         }
         }
-        if (!errorMessage.empty())
+        if (!exists)
         {
+            auto errorMessage = context->peer()
+                              + " was not found in subscriber map"; 
             throw std::runtime_error(errorMessage);
         }
         return result;

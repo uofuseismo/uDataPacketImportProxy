@@ -51,8 +51,8 @@ export std::shared_ptr<spdlog::logger>
                         + programOptions.otelHTTPLogOptions.suffix;
         //httpOptions.use_ssl_credentials = false;
         //httpOptions.ssl_credentials_cacert_path = programOptions.otelGRPCOptions.certificatePath;
-        using providerPtr
-            = otel::nostd::shared_ptr<opentelemetry::logs::LoggerProvider>;
+        //using providerPtr
+        //    = otel::nostd::shared_ptr<opentelemetry::logs::LoggerProvider>;
         auto exporter
             = otel::exporter::otlp::OtlpHttpLogRecordExporterFactory::Create(httpOptions);
         auto processor
