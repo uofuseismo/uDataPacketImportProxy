@@ -50,7 +50,13 @@ jobs:
              cp Dockerfile.deb /tmp/workspace/
              ls /tmp/workspace/
       - store_artifacts:
-          path: /tmp/workspace
+          path: /tmp/artifacts
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - Dockerfile.deb
+            - *Linux.tar.gz
+    # End steps
   # End compile job
   deploy-job:
     docker:
@@ -80,6 +86,8 @@ jobs:
           command: |
             docker tag udatapacketimportproxy quay.io/uuss/udatapacketimportproxy
             docker push quay.io/uuss/udatapacketimportproxy
+    # End steps
+  # End deploy job
 
 # Orchestrate jobs using workflows
 # See: https://circleci.com/docs/workflows/ & https://circleci.com/docs/configuration-reference/#workflows
