@@ -50,7 +50,7 @@ jobs:
              cp Dockerfile.deb /tmp/workspace/
              ls /tmp/workspace/
       - store_artifacts:
-          path: /tmp/artifacts
+          path: /tmp/workspace
   # End compile job
   deploy-job:
     docker:
