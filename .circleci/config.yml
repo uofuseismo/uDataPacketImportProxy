@@ -63,11 +63,12 @@ jobs:
       - run:
           name: "Create docker image"
           command: |
+            ls /tmp/workspace/
             cd /tmp/workspace
             ls
             # Figure out version from app-name-MAJOR.MINOR.PATCH-Linux.tar.gz
-            tarfile=$(ls *Linux.tar.gz)
-            version=$(echo ${tarfile} | sed 's/uDataPacketImportProxy-//g' | sed 's/-Linux.tar.gz//g')
+            tarFile=$(ls *Linux.tar.gz)
+            version=$(echo ${tarFile} | sed 's/uDataPacketImportProxy-//g' | sed 's/-Linux.tar.gz//g')
             echo ${version}
             docker build -t udatapacketimportproxy:latest -t udatapacketimportproxy:${version} -f ./Dockerfile.deb .
       - run:
