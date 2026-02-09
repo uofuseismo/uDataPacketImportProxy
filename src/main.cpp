@@ -6,6 +6,7 @@ import metrics;
 #include <atomic>
 #include <mutex>
 #include <csignal>
+#include <cstdlib>
 #ifndef NDEBUG
 #include <cassert>
 #endif
@@ -287,10 +288,14 @@ int main(int argc, char *argv[])
         spdlog::error(e.what());
         return EXIT_FAILURE;
     }
-    constexpr int overwrite{1};
-    setenv("OTEL_SERVICE_NAME",
-           programOptions.applicationName.c_str(),
-           overwrite);
+    
+    if (getenv("OTEL_SERVICE_NAME") == nullptr)
+    {
+        constexpr int overwrite{1};
+        setenv("OTEL_SERVICE_NAME",
+               programOptions.applicationName.c_str(),
+               overwrite);
+     }
 
     //auto logger = ::initializeLogger(programOptions);
     //::setVerbosityForSPDLOG(programOptions.verbosity, &*logger);
