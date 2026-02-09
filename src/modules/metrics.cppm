@@ -1,5 +1,6 @@
 module;
 
+#include <iostream>
 #include <atomic>
 #include <string>
 #include <opentelemetry/nostd/shared_ptr.h>
@@ -69,22 +70,6 @@ export void cleanup()
      std::shared_ptr<opentelemetry::metrics::MeterProvider> none;
      opentelemetry::sdk::metrics::Provider::SetMeterProvider(none);
 }
-
-/*
-opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
-    receivedPacketsCounter;
-opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
-    sentPacketsCounter;
-opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
-    publisherUtilizationGauge;
-opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
-    subscriberUtilizationGauge;
-
-std::atomic<int64_t> observableReceivedPacketsCounter{0};
-std::atomic<int64_t> observableSentPacketsCounter{0};
-std::atomic<double> observablePublisherUtilization{0};
-std::atomic<double> observableSubscriberUtilization{0};
-*/
 
 export class MetricsSingleton
 {

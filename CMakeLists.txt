@@ -121,16 +121,18 @@ target_include_directories(uDataPacketImportProxy
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
                           )
 target_link_libraries(uDataPacketImportProxy
-                      PUBLIC TBB::tbb
-                      PRIVATE uDataPacketImportProxy::libuDataPacketImportProxy
-                              gRPC::grpc
-                              gRPC::grpc++
-                              opentelemetry-cpp::otlp_http_log_record_exporter
-                              opentelemetry-cpp::otlp_http_metric_exporter
-                              spdlog::spdlog_header_only
-                              Boost::headers
-                              Boost::program_options
-                              Threads::Threads)
+                      PUBLIC
+                         TBB::tbb
+                      PRIVATE
+                         uDataPacketImportProxy::libuDataPacketImportProxy
+                         gRPC::grpc
+                         gRPC::grpc++
+                         opentelemetry-cpp::otlp_http_log_record_exporter
+                         opentelemetry-cpp::otlp_http_metric_exporter
+                         spdlog::spdlog_header_only
+                         Boost::headers
+                         Boost::program_options
+                         Threads::Threads)
 
 ##########################################################################################
 #                                         Tests                                          #
@@ -144,14 +146,15 @@ set_target_properties(unitTests PROPERTIES
                       CXX_STANDARD_REQUIRED YES
                       CXX_EXTENSIONS NO)
 target_link_libraries(unitTests
-                      PUBLIC TBB::tbb
+                      PUBLIC
+                         TBB::tbb
                       PRIVATE
-                      uDataPacketImportProxy::libuDataPacketImportProxy 
-                      gRPC::grpc
-                      gRPC::grpc++
-                      opentelemetry-cpp::otlp_http_metric_exporter
-                      Threads::Threads
-                      Catch2::Catch2 Catch2::Catch2WithMain)
+                         uDataPacketImportProxy::libuDataPacketImportProxy 
+                         gRPC::grpc
+                         gRPC::grpc++
+                         opentelemetry-cpp::otlp_http_metric_exporter
+                         Threads::Threads
+                         Catch2::Catch2 Catch2::Catch2WithMain)
 target_include_directories(unitTests
                            #PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src/modules>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>

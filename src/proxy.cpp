@@ -187,7 +187,7 @@ public:
         mImportExportQueue;
     std::unique_ptr<Backend> mBackend{nullptr};
     std::unique_ptr<Frontend> mFrontend{nullptr};
-    size_t mImportExportQueueCapacity{8192};
+    int mImportExportQueueCapacity{8192};
     std::atomic<bool> mKeepRunning{true};
 };
 

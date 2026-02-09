@@ -14,6 +14,7 @@
 #include "frontend.hpp"
 #include "frontendOptions.hpp"
 #include "grpcOptions.hpp"
+import metrics;
 
 using namespace UDataPacketImportProxy;
 
@@ -49,6 +50,7 @@ public:
         const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
         UDataPacketImportAPI::V1::PublishResponse *publishResponse,
         std::shared_ptr<spdlog::logger> logger,
+        UDataPacketImportProxy::Metrics::MetricsSingleton *metrics,
         const bool isSecured,
         std::atomic<int> *numberOfPublishers,
         std::atomic<bool> *keepRunning
@@ -57,6 +59,7 @@ public:
         mCallback(callback),
         mPublishResponse(publishResponse),
         mLogger(logger),
+        mMetrics(metrics),
         mNumberOfPublishers(numberOfPublishers),
         mKeepRunning(keepRunning)
     {
@@ -109,9 +112,18 @@ Publisher must provide access token in x-custom-auth-token header field.
         }
         // Start
         currentNumberOfPublishers = mNumberOfPublishers->fetch_add(1);
+        auto nPublishers = currentNumberOfPublishers + 1;
+        auto utilization
+            = static_cast<double> (nPublishers)
+             /std::max(1, mMaximumNumberOfPublishers);
+        if (mMetrics)
+        {
+            mMetrics->updatePublisherUtilization(utilization);
+        }
+
         SPDLOG_LOGGER_INFO(mLogger,
                            "Frontend managing {} publishers",
-                           currentNumberOfPublishers + 1);
+                           nPublishers);
         if (mKeepRunning->load())
         {
             StartRead(&mPacket);
@@ -129,6 +141,10 @@ Publisher must provide access token in x-custom-auth-token header field.
         {
             mTotalPackets++;
             auto packet = mPacket;
+            if (mMetrics)
+            {
+                mMetrics->incrementReceivedPacketsCounter();
+            }
             if (packet.number_of_samples() > 0 &&
                 packet.data_type() !=
                     UDataPacketImportAPI::V1::DATA_TYPE_UNKNOWN &&
@@ -233,9 +249,17 @@ Publisher must provide access token in x-custom-auth-token header field.
         {
             mNumberOfPublishers->fetch_sub(1);
         }
+        auto nPublishers = mNumberOfPublishers->load();
+        auto utilization
+            = static_cast<double> (nPublishers)
+             /std::max(1, mMaximumNumberOfPublishers);
+        if (mMetrics)
+        {
+            mMetrics->updatePublisherUtilization(utilization);
+        }
         SPDLOG_LOGGER_INFO(mLogger,
             "Async packet proxy frontend RPC completed for {} (number of publishers is now {})",
-            mPeer, mNumberOfPublishers->load());
+            mPeer, nPublishers);
         delete this;
     }   
 
@@ -250,6 +274,7 @@ Publisher must provide access token in x-custom-auth-token header field.
     std::function<void (UDataPacketImportAPI::V1::Packet &&)> mCallback;
     UDataPacketImportAPI::V1::PublishResponse *mPublishResponse{nullptr};
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
+    UDataPacketImportProxy::Metrics::MetricsSingleton *mMetrics{nullptr};
     std::string mPeer;
     UDataPacketImportAPI::V1::Packet mPacket;
     int mConsecutiveInvalidMessagesCounter{0};
@@ -268,10 +293,12 @@ class Frontend::FrontendImpl :
     public UDataPacketImportAPI::V1::Frontend::CallbackService
 {
 public:
-    FrontendImpl(
+    FrontendImpl
+    (
         const FrontendOptions &options,
         const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
-        std::shared_ptr<spdlog::logger> logger) :
+        std::shared_ptr<spdlog::logger> logger
+    ) :
         mOptions(options),
         mAddPacketCallback(callback),
         mLogger(logger)
@@ -329,7 +356,8 @@ public:
             mSecured = true;
         }
 
-        SPDLOG_LOGGER_INFO(mLogger, "Frontend listening at {}", address);
+        SPDLOG_LOGGER_INFO(mLogger,
+                           "Frontend listening at {}", address);
         mServer = builder.BuildAndStart();
     }
 
@@ -338,12 +366,15 @@ public:
         Publish(grpc::CallbackServerContext* context,
                 UDataPacketImportAPI::V1::PublishResponse *publishResponse) override
     {
+        UDataPacketImportProxy::Metrics::MetricsSingleton &metrics
+            = UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance();
         return new ::AsynchronousReaderFrontend(
             mOptions,
             context,
             mAddPacketCallback,
             publishResponse,
             mLogger,
+            &metrics, 
             mSecured,
             &mNumberOfPublishers,
             &mKeepRunning);
@@ -356,7 +387,7 @@ public:
         if (mServer)
         {   
             mServer->Shutdown();
-        }   
+        }
     }
 //private:
     FrontendOptions mOptions;
