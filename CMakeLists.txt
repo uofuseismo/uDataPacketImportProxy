@@ -137,6 +137,7 @@ target_link_libraries(uDataPacketImportProxy
 ##########################################################################################
 
 add_executable(unitTests
+               testing/grpc.cpp
                testing/proxy.cpp)
 set_target_properties(unitTests PROPERTIES
                       CXX_STANDARD 20
