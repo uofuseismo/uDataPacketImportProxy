@@ -48,7 +48,7 @@ public:
         {
             throw std::invalid_argument("Queue capacity must be positive");
         }
-        mQueueCapacity = static_cast<size_t> (queueCapacity);
+        mQueueCapacity = queueCapacity;
         mQueue.set_capacity(mQueueCapacity);
     }
     void enqueuePacket(const UDataPacketImportAPI::V1::Packet &packet)
@@ -58,7 +58,7 @@ public:
     }
     void enqueuePacket(UDataPacketImportAPI::V1::Packet &&packet)
     {
-        auto approximateSize = mQueue.size();
+        auto approximateSize = static_cast<int> (mQueue.size());
         if (approximateSize >= mQueueCapacity)
         {
             while (approximateSize >= mQueueCapacity)
@@ -95,7 +95,7 @@ public:
     }
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     tbb::concurrent_bounded_queue<UDataPacketImportAPI::V1::Packet> mQueue;
-    size_t mQueueCapacity{32};
+    int mQueueCapacity{32};
 };
 
 class SubscriptionManager
@@ -302,7 +302,7 @@ public:
     AsynchronousWriter(
          const BackendOptions &options,
          grpc::CallbackServerContext *context,
-         const UDataPacketImportAPI::V1::SubscriptionRequest *request,
+         const UDataPacketImportAPI::V1::SubscriptionRequest *, //request,
          std::shared_ptr<::SubscriptionManager> subscriptionManager,
          std::shared_ptr<spdlog::logger> logger,
          UDataPacketImportProxy::Metrics::MetricsSingleton *metrics,

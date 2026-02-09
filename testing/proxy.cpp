@@ -84,10 +84,13 @@ void asyncPacketPublisher(
         }
         void OnWriteDone(bool ok) override
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds {10});
-            //if (mPackets.size() == 2){std::this_thread::sleep_for(std::chrono::seconds {2});}
-            //std::this_thread::sleep_for(std::chrono::seconds {1});
-            nextWrite();
+            if (ok)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds {10});
+                //if (mPackets.size() == 2){std::this_thread::sleep_for(std::chrono::seconds {2});}
+                //std::this_thread::sleep_for(std::chrono::seconds {1});
+                nextWrite();
+            }
         }
         void OnDone(const grpc::Status &status) override
         {

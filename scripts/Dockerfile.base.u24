@@ -148,6 +148,28 @@ RUN mkdir -p /usr/local/include &&\
     make install &&\
     cd /home/ubuntu &&\
     rm -rf Crow-1.3.0
+
+# libmseed and libslink
+RUN cd /home/ubuntu &&\
+    wget -q https://github.com/EarthScope/libmseed/archive/refs/tags/v3.2.4.tar.gz &&\
+    tar -xf v3.2.4.tar.gz &&\
+    rm v3.2.4.tar.gz &&\
+    cd libmseed-3.2.4 &&\
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++-21 -DBUILD_STATIC_LIBS=ON -DBUILD_SHARED_LIBS=OFF &&\
+    cmake --build build &&\
+    cmake --install build &&\
+    cd /home/ubuntu &&\
+    rm -rf libmseed-3.2.4 &&\
+    wget -q https://github.com/EarthScope/libslink/archive/refs/tags/v4.2.0.tar.gz &&\
+    tar -xf v4.2.0.tar.gz &&\
+    rm v4.2.0.tar.gz &&\
+    cd libslink-4.2.0 &&\
+    CC=clang make &&\
+    cp libslink.a /usr/local/lib &&\
+    cp libslink.h /usr/local/include &&\
+    cd /home/ubuntu &&\
+    rm -rf libslink-4.2.0
+    
     
 # OTel and gRPC is a bit circular.  I want to export metrics/logs with grpc.  
 # To do this I need to build otel with grpc.  But I need to first build gprc
