@@ -200,7 +200,6 @@ public:
                     mStopRequested = true;
                     break;
                 }
-                printSummary();
                 if (!checkFuturesOkay(std::chrono::milliseconds {5}))
                 {   
                     SPDLOG_LOGGER_CRITICAL(
@@ -209,6 +208,7 @@ public:
                     mStopRequested = true;
                     break;
                 }   
+                printSummary();
                 std::unique_lock<std::mutex> lock(mStopMutex);
                 mStopCondition.wait_for(lock,
                                         std::chrono::milliseconds {100},
