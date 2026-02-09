@@ -1,10 +1,12 @@
 module;
 
+#include <iostream>
 #include <string>
 #include <chrono>
 #include <fstream>
 #include <sstream>
 #include <filesystem>
+#include <boost/program_options.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 #include "proxyOptions.hpp"
@@ -45,6 +47,50 @@ export struct ProgramOptions
     bool exportLogs{false};
     bool exportMetrics{false};
 };
+
+export
+std::pair<std::string, bool> parseCommandLineOptions(int argc, char *argv[])
+{
+    std::string iniFile;
+    boost::program_options::options_description desc(R"""(
+The uDataPacketImportProxy is a high-speed fixed endpoint to which publishers
+send acquired data packets to the proxy frontend.  Broadcast services can then
+then subscribe to the backend and forward data packets in a way that better
+enables downstream applications.
+
+Example usage is:
+
+    uDataPacketImportProxy --ini=proxy.ini
+
+Allowed options)""");
+    desc.add_options()
+        ("help", "Produces this help message")
+        ("ini",  boost::program_options::value<std::string> (), 
+                 "The initialization file for this executable");
+    boost::program_options::variables_map vm; 
+    boost::program_options::store(
+        boost::program_options::parse_command_line(argc, argv, desc), vm);
+    boost::program_options::notify(vm);
+    if (vm.count("help"))
+    {   
+        std::cout << desc << std::endl;
+        return {iniFile, true};
+    }   
+    if (vm.count("ini"))
+    {   
+        iniFile = vm["ini"].as<std::string>();
+        if (!std::filesystem::exists(iniFile))
+        {
+            throw std::runtime_error("Initialization file: " + iniFile
+                                   + " does not exist");
+        }
+    }   
+    else
+    {   
+        throw std::runtime_error("Initialization file not specified");
+    }   
+    return {iniFile, false};
+}
 
 [[nodiscard]] std::string
 loadStringFromFile(const std::filesystem::path &path)

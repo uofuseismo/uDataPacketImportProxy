@@ -15,13 +15,8 @@ import metrics;
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <opentelemetry/metrics/meter_provider.h>
 #include <opentelemetry/metrics/provider.h>
-#include <boost/program_options.hpp>
-//#include "programOptions.hpp"
 #include "proxy.hpp"
 #include "proxyOptions.hpp"
-//#include "otelSpdlogSink.hpp"
-//#include "metrics.hpp"
-//#include "logger.hpp"
 
 namespace
 {
@@ -35,8 +30,6 @@ opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
     publisherUtilizationGauge;
 opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
     subscriberUtilizationGauge;
-
-[[nodiscard]] std::pair<std::string, bool> parseCommandLineOptions(int, char *[]);
 
 class ServerImpl
 {
@@ -268,7 +261,9 @@ int main(int argc, char *argv[])
     std::filesystem::path iniFile;
     try 
     {   
-        auto [iniFileName, isHelp] = ::parseCommandLineOptions(argc, argv);
+        auto [iniFileName, isHelp] =
+            UDataPacketImportProxy::Options::parseCommandLineOptions(
+               argc, argv);
         if (isHelp){return EXIT_SUCCESS;}
         iniFile = iniFileName;
     }   
@@ -297,8 +292,6 @@ int main(int argc, char *argv[])
                overwrite);
      }
 
-    //auto logger = ::initializeLogger(programOptions);
-    //::setVerbosityForSPDLOG(programOptions.verbosity, &*logger);
     auto logger = UDataPacketImportProxy::Logger::initialize(programOptions);
     auto metrics = &UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance();
     try
@@ -351,72 +344,3 @@ int main(int argc, char *argv[])
     return EXIT_SUCCESS;
 }
 
-///--------------------------------------------------------------------------///
-///                            Utility Functions                             ///
-///--------------------------------------------------------------------------///
-namespace
-{   
-    
-/*
-void setVerbosityForSPDLOG(const int verbosity,
-                           spdlog::logger *logger)
-{
-#ifndef NDEBUG
-    assert(logger != nullptr);
-#endif
-    if (verbosity <= 1)
-    {
-        logger->set_level(spdlog::level::critical);
-    }
-    if (verbosity == 2){logger->set_level(spdlog::level::warn);}
-    if (verbosity == 3){logger->set_level(spdlog::level::info);}
-    if (verbosity >= 4){logger->set_level(spdlog::level::debug);}
-}
-*/
-
-/// Read the program options from the command line
-std::pair<std::string, bool> parseCommandLineOptions(int argc, char *argv[])
-{
-    std::string iniFile;
-    boost::program_options::options_description desc(R"""(
-The uDataPacketImportProxy is a high-speed fixed endpoint to which publishers
-send acquired data packets to the proxy frontend.  Broadcast services can then
-then subscribe to the backend and forward data packets in a way that better
-enables downstream applications.
-
-Example usage is:
-
-    uDataPacketImportProxy --ini=proxy.ini
-
-Allowed options)""");
-    desc.add_options()
-        ("help", "Produces this help message")
-        ("ini",  boost::program_options::value<std::string> (), 
-                 "The initialization file for this executable");
-    boost::program_options::variables_map vm; 
-    boost::program_options::store(
-        boost::program_options::parse_command_line(argc, argv, desc), vm);
-    boost::program_options::notify(vm);
-    if (vm.count("help"))
-    {   
-        std::cout << desc << std::endl;
-        return {iniFile, true};
-    }   
-    if (vm.count("ini"))
-    {   
-        iniFile = vm["ini"].as<std::string>();
-        if (!std::filesystem::exists(iniFile))
-        {
-            throw std::runtime_error("Initialization file: " + iniFile
-                                   + " does not exist");
-        }
-    }   
-    else
-    {
-        throw std::runtime_error("Initialization file not specified");
-    }
-    return {iniFile, false};
-}
-
- 
-}
