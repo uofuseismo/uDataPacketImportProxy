@@ -22,12 +22,10 @@ class Proxy::ProxyImpl
 public:
     explicit ProxyImpl(
         const ProxyOptions &options,
-        std::shared_ptr<spdlog::logger> logger,
-        UDataPacketImportProxy::Metrics::MetricsSingleton *metrics
+        std::shared_ptr<spdlog::logger> logger
     ) :
         mOptions(options),
-        mLogger(logger),
-        mMetrics(metrics)
+        mLogger(logger)
     {   
         if (mLogger == nullptr)
         {
@@ -71,10 +69,7 @@ public:
             // Try to add the packet
             if (mImportExportQueue.try_push(std::move(packet)))
             {
-                if (mMetrics)
-                {
-                    mMetrics->incrementReceivedPacketsCounter();
-                }
+                mMetrics.incrementReceivedPacketsCounter();
             }
             else
             {
@@ -123,27 +118,25 @@ public:
         SPDLOG_LOGGER_DEBUG(mLogger, "Thread exiting propagate packet thread");
     }
 
-    std::vector<std::future<void>> start()
-    {   
-        std::vector<std::future<void>> result;
+    void start()
+    {
 #ifndef NDEBUG
         assert(mBackend);
         assert(mFrontend);
+        assert(!mWasStarted);
 #endif
-        stop();
         std::this_thread::sleep_for (std::chrono::milliseconds {10});
 
         mKeepRunning = true;
         // Get our propagator thread going before anything else
-        result.push_back(
-            std::async(&ProxyImpl::propagatePacketToBackend, this));
+        mProxyThread = std::thread(&ProxyImpl::propagatePacketToBackend, this);
         // Technically starting the backend first will let the eager beavers
         // not miss a packet
         // N.B. start constructs the callback server so this can throw
         mBackend->start();
         // N.B. start constructs the callback server so this can throw
         mFrontend->start();
-        return result;
+        mWasStarted = true;
     }
 
     void stop()
@@ -153,29 +146,39 @@ public:
         // elegant then this will reduce the number of packets being lost.
         if (mFrontend)
         {
-            SPDLOG_LOGGER_DEBUG(mLogger, "Proxy canceling RPCs on frontend");
-            mFrontend->stop();
+            if (mFrontend->isRunning())
+            {
+                SPDLOG_LOGGER_INFO(mLogger, "Proxy canceling RPCs on frontend");
+                mFrontend->stop();
+                std::this_thread::sleep_for (std::chrono::milliseconds {10});
+            }
         }
-        std::this_thread::sleep_for (std::chrono::milliseconds {10});
  
         // Stop the packet propagator thread.  This gives a little more time for
         // the backend to finish its sends.
-        mKeepRunning = false;
+        mKeepRunning.store(false);
+        if (mProxyThread.joinable()){mProxyThread.join();}
 
         // Now purge the subscribers.  By this point no new messages come in
         // but to help the subsribers out just a bit we'll pause just a moment
         // to give them a chance to finish pulling all the remaining data.
-        std::this_thread::sleep_for (std::chrono::milliseconds {25});
         if (mBackend)
         {
-            SPDLOG_LOGGER_DEBUG(mLogger, "Proxy canceling RPCs on backend");
-            mBackend->stop();
+            if (mBackend->isRunning())
+            {
+                std::this_thread::sleep_for (std::chrono::milliseconds {25});
+                SPDLOG_LOGGER_INFO(mLogger, "Proxy canceling RPCs on backend");
+                mBackend->stop();
+            }
         }
     }
 
     ProxyOptions mOptions;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
-    UDataPacketImportProxy::Metrics::MetricsSingleton *mMetrics{nullptr};
+    UDataPacketImportProxy::Metrics::MetricsSingleton &mMetrics
+    {   
+        UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance()
+    };
     std::function<void (UDataPacketImportAPI::V1::Packet &&)>
         mAddPacketCallback
     {   
@@ -185,24 +188,25 @@ public:
     };  
     tbb::concurrent_bounded_queue<UDataPacketImportAPI::V1::Packet>
         mImportExportQueue;
+    std::thread mProxyThread; 
     std::unique_ptr<Backend> mBackend{nullptr};
     std::unique_ptr<Frontend> mFrontend{nullptr};
     int mImportExportQueueCapacity{8192};
     std::atomic<bool> mKeepRunning{true};
+    bool mWasStarted{false};
 };
 
 /// Constructor
 Proxy::Proxy(const ProxyOptions &options,
-             std::shared_ptr<spdlog::logger> logger,
-             UDataPacketImportProxy::Metrics::MetricsSingleton *metrics) :
-    pImpl(std::make_unique<ProxyImpl> (options, logger, metrics))
+             std::shared_ptr<spdlog::logger> logger) :
+    pImpl(std::make_unique<ProxyImpl> (options, logger))
 {
 }
 
 /// Start the proxy
-std::vector<std::future<void>> Proxy::start()
+void Proxy::start()
 {
-    return pImpl->start();
+    pImpl->start();
 }
 
 /// Stop the prxoy

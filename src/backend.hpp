@@ -22,6 +22,7 @@ public:
     void start();
     void enqueuePacket(UDataPacketImportAPI::V1::Packet &&packet);
     [[nodiscard]] int getNumberOfSubscribers() const;
+    [[nodiscard]] bool isRunning() const noexcept;
 
     Backend() = delete;
     Backend(const Backend &) = delete;

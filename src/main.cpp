@@ -13,6 +13,7 @@ import metrics;
 #include <filesystem>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <absl/log/initialize.h>
 #include <opentelemetry/metrics/meter_provider.h>
 #include <opentelemetry/metrics/provider.h>
 #include "proxy.hpp"
@@ -46,7 +47,7 @@ public:
 #endif
         mProxy
            = std::make_unique<UDataPacketImportProxy::Proxy>
-             (options.proxyOptions, mLogger, mMetrics); 
+             (options.proxyOptions, mLogger); 
         // Metrics
         if (options.exportMetrics)
         {
@@ -105,17 +106,19 @@ public:
 #ifndef NDEBUG
         assert(mProxy != nullptr);
 #endif
-        stop();
+        //stop();
         std::this_thread::sleep_for (std::chrono::milliseconds {10});
         mKeepRunning = true;
-        auto proxyFutures = mProxy->start();
-        for (auto &p : proxyFutures){mFutures.push_back(std::move(p));}
+        mProxy->start();
         handleMainThread();
     }
 
     /// Stop the proxy service
     void stop()
     {
+#ifndef NDEBUG
+        assert(mProxy != nullptr);
+#endif
         mKeepRunning = false;
         if (mProxy){mProxy->stop();}
         for (auto &future : mFutures)
@@ -216,6 +219,7 @@ public:
         {
             SPDLOG_LOGGER_DEBUG(mLogger, "Stop request received.  Exiting...");
             stop();
+            std::this_thread::sleep_for(std::chrono::milliseconds {15});
         }
     }
 
@@ -314,6 +318,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
  
+    absl::InitializeLog();
     try
     {
         ::ServerImpl server{programOptions, logger, metrics};
@@ -324,6 +329,7 @@ int main(int argc, char *argv[])
         }
         if (programOptions.exportLogs)
         {
+            SPDLOG_LOGGER_INFO(logger, "Cleaning up logger");
             UDataPacketImportProxy::Logger::cleanup();
         }
     }

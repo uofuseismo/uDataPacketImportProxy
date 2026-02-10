@@ -305,14 +305,12 @@ public:
          const UDataPacketImportAPI::V1::SubscriptionRequest *, //request,
          std::shared_ptr<::SubscriptionManager> subscriptionManager,
          std::shared_ptr<spdlog::logger> logger,
-         UDataPacketImportProxy::Metrics::MetricsSingleton *metrics,
          const bool isSecured,
          std::atomic<bool> *keepRunning) :
          mOptions(options),
          mContext(context),
          mSubscriptionManager(subscriptionManager),
          mLogger(logger),
-         mMetrics(metrics),
          mKeepRunning(keepRunning)
     {
         auto maximumNumberOfSubscribers
@@ -360,10 +358,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
             auto utilization
                 = static_cast<double> (nSubscribers)
                  /std::max(1, maximumNumberOfSubscribers); 
-            if (mMetrics)
-            {
-                mMetrics->updateSubscriberUtilization(utilization);
-            }
+            mMetrics.updateSubscriberUtilization(utilization);
             SPDLOG_LOGGER_INFO(mLogger,
                           "Backend is now managing {} subscribers (Resource {} pct utilized)",
                           nSubscribers, utilization*100.0);
@@ -402,10 +397,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
         // Packet is flushed; can now safely purge the element to write
         mWriteInProgress = false;
         mPacketsQueue.pop();
-        if (mMetrics)
-        {   
-            mMetrics->incrementSentPacketsCounter();
-        }   
+        mMetrics.incrementSentPacketsCounter();
         // Start next write
         nextWrite();
     }
@@ -422,10 +414,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
         auto utilization
             = static_cast<double> (std::max(0, nSubscribers))
              /std::max(1, maximumNumberOfSubscribers); 
-        if (mMetrics)
-        {
-            mMetrics->updateSubscriberUtilization(utilization);
-        }
+        mMetrics.updateSubscriberUtilization(utilization);
         SPDLOG_LOGGER_INFO(mLogger,
   "Subscribe RPC completed for {}.  Backend is now managing {} subscribers.  (Resource {} pct utilized)",
                            mPeer, nSubscribers, utilization*100.0);
@@ -526,7 +515,10 @@ private:
     grpc::CallbackServerContext *mContext{nullptr};
     std::shared_ptr<::SubscriptionManager> mSubscriptionManager{nullptr};
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
-    UDataPacketImportProxy::Metrics::MetricsSingleton *mMetrics{nullptr};
+    UDataPacketImportProxy::Metrics::MetricsSingleton &mMetrics
+    {
+        UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance()
+    };
     std::atomic<bool> *mKeepRunning{nullptr};
     std::queue<UDataPacketImportAPI::V1::Packet> mPacketsQueue;
     std::string mPeer;
@@ -606,14 +598,11 @@ public:
         Subscribe(grpc::CallbackServerContext* context,
                   const UDataPacketImportAPI::V1::SubscriptionRequest *request) override
     {
-        UDataPacketImportProxy::Metrics::MetricsSingleton &metrics
-            = UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance();
         return new ::AsynchronousWriter(mOptions,
                                         context,
                                         request,
                                         mSubscriptionManager,
                                         mLogger,
-                                        &metrics,
                                         mSecured,
                                         &mKeepRunning);
     }
@@ -669,4 +658,9 @@ void Backend::enqueuePacket(UDataPacketImportAPI::V1::Packet &&packet)
 int Backend::getNumberOfSubscribers() const
 {
     return std::max(0, pImpl->mSubscriptionManager->getNumberOfSubscribers());
+}
+
+bool Backend::isRunning() const noexcept
+{
+    return pImpl->mKeepRunning.load();
 }

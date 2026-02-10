@@ -65,24 +65,30 @@ protected:
     static constexpr auto kLibraryName = "spdlog";
 
     auto provider   = opentelemetry::logs::Provider::GetLoggerProvider();
-    auto logger     = provider->GetLogger(msg.logger_name.data(), kLibraryName, libraryVersion());
-    auto log_record = logger->CreateLogRecord();
-
-    if (log_record)
+    if (provider)
     {
-      using namespace opentelemetry::semconv::code;
-      using namespace opentelemetry::semconv::thread;
+        auto logger     = provider->GetLogger(msg.logger_name.data(), kLibraryName, libraryVersion());
+        if (logger)
+        {
+           auto log_record = logger->CreateLogRecord();
 
-      log_record->SetSeverity(levelToSeverity(msg.level));
-      log_record->SetBody(opentelemetry::nostd::string_view(msg.payload.data(), msg.payload.size()));
-      log_record->SetTimestamp(msg.time);
-      if (!msg.source.empty())
-      {   
-        log_record->SetAttribute(kCodeFilePath, msg.source.filename);
-        log_record->SetAttribute(kCodeLineNumber, msg.source.line);
-      }   
-      log_record->SetAttribute(kThreadId, msg.thread_id);
-      logger->EmitLogRecord(std::move(log_record));
+           if (log_record)
+           {
+              using namespace opentelemetry::semconv::code;
+              using namespace opentelemetry::semconv::thread;
+  
+              log_record->SetSeverity(levelToSeverity(msg.level));
+              log_record->SetBody(opentelemetry::nostd::string_view(msg.payload.data(), msg.payload.size()));
+              log_record->SetTimestamp(msg.time);
+              if (!msg.source.empty())
+              {   
+                log_record->SetAttribute(kCodeFilePath, msg.source.filename);
+                log_record->SetAttribute(kCodeLineNumber, msg.source.line);
+              }   
+              log_record->SetAttribute(kThreadId, msg.thread_id);
+              logger->EmitLogRecord(std::move(log_record));
+           }
+       }
     }
   }
   void flush_() override {}

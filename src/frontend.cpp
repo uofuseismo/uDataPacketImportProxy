@@ -40,17 +40,16 @@ bool validatePublisher(const grpc::CallbackServerContext *context,
     return false;
 }
 
-class AsynchronousReaderFrontend :
+class AsynchronousReader :
     public grpc::ServerReadReactor<UDataPacketImportAPI::V1::Packet> 
 {
 public:
-    AsynchronousReaderFrontend(
+    AsynchronousReader(
         const FrontendOptions &options, 
         grpc::CallbackServerContext *context,
         const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
         UDataPacketImportAPI::V1::PublishResponse *publishResponse,
         std::shared_ptr<spdlog::logger> logger,
-        UDataPacketImportProxy::Metrics::MetricsSingleton *metrics,
         const bool isSecured,
         std::atomic<int> *numberOfPublishers,
         std::atomic<bool> *keepRunning
@@ -59,7 +58,6 @@ public:
         mCallback(callback),
         mPublishResponse(publishResponse),
         mLogger(logger),
-        mMetrics(metrics),
         mNumberOfPublishers(numberOfPublishers),
         mKeepRunning(keepRunning)
     {
@@ -116,10 +114,7 @@ Publisher must provide access token in x-custom-auth-token header field.
         auto utilization
             = static_cast<double> (nPublishers)
              /std::max(1, mMaximumNumberOfPublishers);
-        if (mMetrics)
-        {
-            mMetrics->updatePublisherUtilization(utilization);
-        }
+        mMetrics.updatePublisherUtilization(utilization);
 
         SPDLOG_LOGGER_INFO(mLogger,
                            "Frontend managing {} publishers",
@@ -136,15 +131,12 @@ Publisher must provide access token in x-custom-auth-token header field.
     }
 
     void OnReadDone(bool ok) override 
-    {   
+    {
         if (ok) 
         {
             mTotalPackets++;
             auto packet = mPacket;
-            if (mMetrics)
-            {
-                mMetrics->incrementReceivedPacketsCounter();
-            }
+            mMetrics.incrementReceivedPacketsCounter();
             if (packet.number_of_samples() > 0 &&
                 packet.data_type() !=
                     UDataPacketImportAPI::V1::DATA_TYPE_UNKNOWN &&
@@ -220,6 +212,7 @@ Publisher must provide access token in x-custom-auth-token header field.
                         "Too many conseuctive messages were invalid - double check API"};
                 Finish(status);
             }
+            // Keep running?
             if (mKeepRunning->load())
             {
                 StartRead(&mPacket);
@@ -240,41 +233,67 @@ Publisher must provide access token in x-custom-auth-token header field.
             mPublishResponse->set_packets_rejected(mPacketsRejected);
             Finish(grpc::Status::OK);
         }
+/*
+#ifndef NDEBUG
+        assert(mKeepRunning);
+        assert(mLogger);
+        assert(mPublishResponse != nullptr);
+#endif
+        if (!mKeepRunning->load())
+        {   
+            mPublishResponse->set_total_packets(mTotalPackets);
+            mPublishResponse->set_packets_rejected(mPacketsRejected);
+            SPDLOG_LOGGER_INFO(mLogger, "Frontend sending shutdown");
+            grpc::Status status{grpc::StatusCode::UNAVAILABLE,
+                                "Server shutdown - try again later"};
+            Finish(status);
+        }
+*/
     } 
 
     void OnDone() override 
     { 
+#ifndef NDEBUG
+        assert(mKeepRunning != nullptr);
+#endif
         // Client shutdown - decrement
         if (mKeepRunning->load())
         {
             mNumberOfPublishers->fetch_sub(1);
+            int nPublishers = mNumberOfPublishers->load();
+            auto utilization
+                = static_cast<double> (nPublishers)
+                 /std::max(1, mMaximumNumberOfPublishers);
+            mMetrics.updatePublisherUtilization(utilization);
+            SPDLOG_LOGGER_INFO(mLogger,
+                "Async packet proxy frontend RPC completed for {} (number of publishers is now {})",
+                mPeer, nPublishers);
         }
-        auto nPublishers = mNumberOfPublishers->load();
-        auto utilization
-            = static_cast<double> (nPublishers)
-             /std::max(1, mMaximumNumberOfPublishers);
-        if (mMetrics)
-        {
-            mMetrics->updatePublisherUtilization(utilization);
-        }
-        SPDLOG_LOGGER_INFO(mLogger,
-            "Async packet proxy frontend RPC completed for {} (number of publishers is now {})",
-            mPeer, nPublishers);
         delete this;
     }   
 
     void OnCancel() override 
-    {   
+    {
         SPDLOG_LOGGER_INFO(mLogger,
                            "Async packet proxy frontend RPC canceled by {}",
                            mPeer);
     }   
+
+#ifndef NDEBUG
+    ~AsynchronousReader()
+    {
+        SPDLOG_LOGGER_INFO(mLogger, "In frontend async read destructor");
+    }
+#endif
 //private:
     grpc::CallbackServerContext *mContext{nullptr};
     std::function<void (UDataPacketImportAPI::V1::Packet &&)> mCallback;
     UDataPacketImportAPI::V1::PublishResponse *mPublishResponse{nullptr};
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
-    UDataPacketImportProxy::Metrics::MetricsSingleton *mMetrics{nullptr};
+    UDataPacketImportProxy::Metrics::MetricsSingleton &mMetrics
+    {
+        UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance()
+    };
     std::string mPeer;
     UDataPacketImportAPI::V1::Packet mPacket;
     int mConsecutiveInvalidMessagesCounter{0};
@@ -312,6 +331,13 @@ public:
     void stop()
     {
         mKeepRunning.store(false); 
+        std::this_thread::sleep_for(std::chrono::milliseconds {10});
+        if (mServer)
+        {
+            SPDLOG_LOGGER_INFO(mLogger, "Shutting down server");
+            mServer->Shutdown();
+            SPDLOG_LOGGER_INFO(mLogger, "Server shut down");
+        }
         mNumberOfPublishers.store(0);
     }
 
@@ -366,15 +392,12 @@ public:
         Publish(grpc::CallbackServerContext* context,
                 UDataPacketImportAPI::V1::PublishResponse *publishResponse) override
     {
-        UDataPacketImportProxy::Metrics::MetricsSingleton &metrics
-            = UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance();
-        return new ::AsynchronousReaderFrontend(
+        return new ::AsynchronousReader(
             mOptions,
             context,
             mAddPacketCallback,
             publishResponse,
             mLogger,
-            &metrics, 
             mSecured,
             &mNumberOfPublishers,
             &mKeepRunning);
@@ -383,11 +406,7 @@ public:
     ~FrontendImpl() override
     {
         stop();
-        std::this_thread::sleep_for(std::chrono::milliseconds {15});
-        if (mServer)
-        {   
-            mServer->Shutdown();
-        }
+        std::this_thread::sleep_for(std::chrono::milliseconds {25});
     }
 //private:
     FrontendOptions mOptions;
@@ -407,46 +426,11 @@ Frontend::Frontend(
 {
 }
 
-/// Starts the frontend
+Frontend::~Frontend() = default;
+
 void Frontend::start()
 {
     pImpl->start();
-/*
-
-    if (grpcOptions.getServerKey() == std::nullopt ||
-        grpcOptions.getServerCertificate() == std::nullopt)
-    { 
-        spdlog::info("Initiating non-secured proxy frontend");
-        builder.AddListeningPort(address,
-                                 grpc::InsecureServerCredentials());
-        builder.RegisterService(this);
-    }
-    if (grpcOptions.serverKey.empty() ||
-        grpcOptions.serverCertificate.empty())
-    {   
-        spdlog::info("Initiating non-secured proxy frontend");
-        builder.AddListeningPort(address,
-                                 grpc::InsecureServerCredentials());
-        builder.RegisterService(this);
-    }   
-    else
-    {   
-        spdlog::info("Initiating secured proxy frontend");
-        grpc::SslServerCredentialsOptions::PemKeyCertPair keyCertPair
-        {
-            grpcOptions.serverKey,        // Private key
-            grpcOptions.serverCertificate // Public key (cert chain)
-        };
-        grpc::SslServerCredentialsOptions sslOptions; 
-        sslOptions.pem_key_cert_pairs.emplace_back(keyCertPair);
-        builder.AddListeningPort(address,
-                                 grpc::SslServerCredentials(sslOptions));
-        builder.RegisterService(this);
-    }   
-    spdlog::info("Frontend listening on " + address);
-    pImpl->mServer = builder.BuildAndStart();
-*/
-
 }
 
 void Frontend::stop()
@@ -454,9 +438,121 @@ void Frontend::stop()
     pImpl->stop();
 }
 
-Frontend::~Frontend() = default;
-
 int Frontend::getNumberOfPublishers() const
 {
     return std::max(0, pImpl->mNumberOfPublishers.load());
 }
+
+bool Frontend::isRunning() const noexcept
+{
+    return pImpl->mKeepRunning.load();
+}
+
+
+/*
+Frontend::Frontend(
+    const FrontendOptions &options,
+    const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
+    std::shared_ptr<spdlog::logger> logger
+    ) :
+    mOptions(options),
+    mAddPacketCallback(callback),
+    mLogger(logger)
+{
+    if (mLogger == nullptr)
+    {   
+        mLogger = spdlog::stdout_color_mt("ProxyFrontendConsole");
+    }
+}
+
+/// Starts the frontend
+void Frontend::start()
+{
+    //pImpl->start();
+        mKeepRunning.store(true);
+        mNumberOfPublishers.store(0);
+        auto grpcOptions = mOptions.getGRPCOptions();
+        auto address = makeAddress(grpcOptions);
+        grpc::ServerBuilder builder;
+        //constexpr std::chrono::milliseconds maxIdle{std::chrono::seconds {1}};
+        //auto idleOption = grpc::MakeChannelArgumentOption( GRPC_ARG_MAX_CONNECTION_IDLE_MS, maxIdle.count() );
+        //builder.SetOption(std::move(idleOption));
+        if (mOptions.getMaximumMessageSizeInBytes() > 0)
+        {
+            builder.SetMaxReceiveMessageSize(
+                mOptions.getMaximumMessageSizeInBytes());
+        }
+        if (grpcOptions.getServerKey() == std::nullopt ||
+            grpcOptions.getServerCertificate() == std::nullopt)
+        { 
+            SPDLOG_LOGGER_INFO(mLogger,
+                               "Initiating non-secured proxy frontend");
+            builder.AddListeningPort(address,
+                                     grpc::InsecureServerCredentials());
+            builder.RegisterService(this);
+            mSecured = false;
+        }
+        else
+        {   
+            SPDLOG_LOGGER_INFO(mLogger, "Initiating secured proxy frontend");
+            grpc::SslServerCredentialsOptions::PemKeyCertPair keyCertPair
+            {
+                *grpcOptions.getServerKey(),        // Private key
+                *grpcOptions.getServerCertificate() // Public key (cert chain)
+            };
+            grpc::SslServerCredentialsOptions sslOptions; 
+            sslOptions.pem_key_cert_pairs.emplace_back(keyCertPair);
+            builder.AddListeningPort(address,
+                                     grpc::SslServerCredentials(sslOptions));
+            builder.RegisterService(this);
+            mSecured = true;
+        }
+
+        SPDLOG_LOGGER_INFO(mLogger,
+                           "Frontend listening at {}", address);
+        mServer = builder.BuildAndStart();
+
+}
+
+void Frontend::stop()
+{
+    //pImpl->stop();
+    mKeepRunning.store(false); 
+    std::this_thread::sleep_for(std::chrono::milliseconds {10});
+    if (mServer)
+    {
+        SPDLOG_LOGGER_INFO(mLogger, "Shutting down server");
+        mServer->Shutdown();
+        SPDLOG_LOGGER_INFO(mLogger, "Server shut down");
+    }
+    mNumberOfPublishers.store(0);
+}
+
+Frontend::~Frontend() = default;
+
+int Frontend::getNumberOfPublishers() const
+{
+    return std::max(0, mNumberOfPublishers.load());
+}
+
+bool Frontend::isRunning() const noexcept
+{
+    return mKeepRunning.load();
+}
+
+/// The RPC
+grpc::ServerReadReactor<UDataPacketImportAPI::V1::Packet>*
+Frontend::Publish(grpc::CallbackServerContext* context,
+                  UDataPacketImportAPI::V1::PublishResponse *publishResponse)
+{   
+    return new ::AsynchronousReader(
+        mOptions,
+        context,
+        mAddPacketCallback,
+        publishResponse,
+        mLogger,
+        mSecured,
+        &mNumberOfPublishers,
+        &mKeepRunning);
+}   
+*/

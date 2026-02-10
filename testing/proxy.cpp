@@ -52,15 +52,11 @@ void runProxy()
     std::shared_ptr<spdlog::logger> logger{nullptr};
     auto metrics
          = &UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance();
-    UDataPacketImportProxy::Proxy proxy{proxyOptions, logger, metrics};
+    UDataPacketImportProxy::Proxy proxy{proxyOptions, logger};
 
-    auto futures = proxy.start();
+    proxy.start();
     std::this_thread::sleep_for(std::chrono::seconds {3});
     proxy.stop();
-    for (auto &future : futures)
-    {
-        if (future.valid()){future.get();}
-    }
 }
 
 void asyncPacketPublisher(
