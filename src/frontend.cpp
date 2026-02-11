@@ -282,7 +282,10 @@ Publisher must provide access token in x-custom-auth-token header field.
 #ifndef NDEBUG
     ~AsynchronousReader()
     {
-        SPDLOG_LOGGER_INFO(mLogger, "In frontend async read destructor");
+        if (mLogger)
+        {
+            SPDLOG_LOGGER_DEBUG(mLogger, "In frontend async read destructor");
+        }
     }
 #endif
 //private:
