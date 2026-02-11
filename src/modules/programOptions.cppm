@@ -246,6 +246,13 @@ UDataPacketImportProxy::ProxyOptions getProxyOptions(
     const boost::property_tree::ptree &propertyTree)
 {
     UDataPacketImportProxy::ProxyOptions proxyOptions;
+
+    auto queueCapacity = proxyOptions.getQueueCapacity();
+    queueCapacity
+        = propertyTree.get<int> ("Proxy.queueCapacity",
+                                 queueCapacity);
+    proxyOptions.setQueueCapacity(queueCapacity);
+
     auto frontendOptions = getFrontendOptions(propertyTree);
     auto backendOptions = getBackendOptions(propertyTree);
     if (frontendOptions.getGRPCOptions().getHost() == 
