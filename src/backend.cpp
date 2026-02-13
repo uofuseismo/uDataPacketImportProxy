@@ -300,18 +300,18 @@ class AsynchronousWriter :
 {
 public:
     AsynchronousWriter(
-         const BackendOptions &options,
-         grpc::CallbackServerContext *context,
-         const UDataPacketImportAPI::V1::SubscriptionRequest *, //request,
-         std::shared_ptr<::SubscriptionManager> subscriptionManager,
-         std::shared_ptr<spdlog::logger> logger,
-         const bool isSecured,
-         std::atomic<bool> *keepRunning) :
-         mOptions(options),
-         mContext(context),
-         mSubscriptionManager(subscriptionManager),
-         mLogger(logger),
-         mKeepRunning(keepRunning)
+        const BackendOptions &options,
+        grpc::CallbackServerContext *context,
+        const UDataPacketImportAPI::V1::SubscriptionRequest *, //request,
+        std::shared_ptr<::SubscriptionManager> subscriptionManager,
+        std::shared_ptr<spdlog::logger> logger,
+        const bool isSecured,
+        std::atomic<bool> *keepRunning) :
+        mOptions(options),
+        mContext(context),
+        mSubscriptionManager(subscriptionManager),
+        mLogger(logger),
+        mKeepRunning(keepRunning)
     {
         auto maximumNumberOfSubscribers
             = mOptions.getMaximumNumberOfSubscribers();
