@@ -10,6 +10,7 @@ public:
     FrontendOptions mFrontendOptions;
     BackendOptions mBackendOptions;
     int mQueueCapacity{8192};
+    int mDeduplicateCircularBufferSize{32};
 };
 
 /// Constructor

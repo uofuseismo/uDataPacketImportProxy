@@ -273,7 +273,10 @@ int main(int argc, char *argv[])
     }   
     catch (const std::exception &e) 
     {   
-        spdlog::critical(e.what());
+        auto consoleLogger = spdlog::stdout_color_st("console");
+        SPDLOG_LOGGER_CRITICAL(consoleLogger,
+                               "Failed getting command line options because {}",
+                               std::string {e.what()});
         return EXIT_FAILURE;
     }   
 
@@ -284,7 +287,10 @@ int main(int argc, char *argv[])
     } 
     catch (const std::exception &e)
     {
-        spdlog::error(e.what());
+        auto consoleLogger = spdlog::stdout_color_st("console");
+        SPDLOG_LOGGER_CRITICAL(consoleLogger,
+                               "Failed parsing ini file because {}",
+                               std::string {e.what()});
         return EXIT_FAILURE;
     }
     
