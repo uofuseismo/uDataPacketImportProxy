@@ -354,6 +354,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
         {
             SPDLOG_LOGGER_INFO(mLogger, "Subscribing {} to all streams", mPeer);
             mSubscriptionManager->subscribe(mContext);
+            mSubscribed = true;
             auto nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
             auto utilization
                 = static_cast<double> (nSubscribers)
@@ -407,7 +408,11 @@ Subscriber must provide access token in x-custom-auth-token header field.
     // subscription manager..
     void OnDone() override 
     { 
-        SPDLOG_LOGGER_INFO(mLogger, "Subscribe RPC completed for {}", mPeer);
+        if (mContext && mSubscribed)
+        {
+            mSubscriptionManager->unsubscribe(mContext);
+            mSubscribed = false;
+        }
         int nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
         auto maximumNumberOfSubscribers
             = mOptions.getMaximumNumberOfSubscribers();
@@ -418,16 +423,17 @@ Subscriber must provide access token in x-custom-auth-token header field.
         SPDLOG_LOGGER_INFO(mLogger,
   "Subscribe RPC completed for {}.  Backend is now managing {} subscribers.  (Resource {} pct utilized)",
                            mPeer, nSubscribers, utilization*100.0);
-        if (mContext)
-        {
-            mSubscriptionManager->unsubscribe(mContext);
-        }
         delete this;
     }   
 
     void OnCancel() override 
     {   
         SPDLOG_LOGGER_INFO(mLogger, "Subscribe RPC cancelled for {}", mPeer);
+        if (mContext && mSubscribed)
+        {
+            mSubscriptionManager->unsubscribe(mContext);
+            mSubscribed = false;
+        }    
     }   
 
 private:
@@ -525,6 +531,7 @@ private:
     std::chrono::milliseconds mTimeOut{20};
     size_t mMaximumWriteQueueSize{128};
     bool mWriteInProgress{false};
+    bool mSubscribed{false};
 };
 
 }

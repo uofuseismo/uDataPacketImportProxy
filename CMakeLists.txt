@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(uDataPacketImportProxy VERSION 0.0.2 LANGUAGES CXX)
+project(uDataPacketImportProxy VERSION 0.0.3 LANGUAGES CXX)
 enable_testing()
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
