@@ -509,6 +509,7 @@ private:
             // subscriptoins.  This can be the case whether the server is
             // shutting down or the client bailed.
             mSubscriptionManager->unsubscribe(mContext);
+            mSubscribed = false;
             if (mContext->IsCancelled())
             {
                 SPDLOG_LOGGER_INFO(mLogger,
