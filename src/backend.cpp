@@ -302,7 +302,7 @@ public:
     AsynchronousWriter(
         const BackendOptions &options,
         grpc::CallbackServerContext *context,
-        const UDataPacketImportAPI::V1::SubscriptionRequest *, //request,
+        const UDataPacketImportAPI::V1::SubscriptionRequest *request,
         std::shared_ptr<::SubscriptionManager> subscriptionManager,
         std::shared_ptr<spdlog::logger> logger,
         const bool isSecured,
@@ -313,10 +313,17 @@ public:
         mLogger(logger),
         mKeepRunning(keepRunning)
     {
+        mPeer = mContext->peer();
+        if (request)
+        {
+            if (!request->identifier().empty())
+            { 
+                mPeer = mPeer + " (" + request->identifier() + ")";
+            }
+        }
         auto maximumNumberOfSubscribers
             = mOptions.getMaximumNumberOfSubscribers();
         // Authenticate
-        mPeer = context->peer();
         if (isSecured &&
             mOptions.getGRPCOptions().getAccessToken() != std::nullopt)
         {
@@ -352,7 +359,9 @@ Subscriber must provide access token in x-custom-auth-token header field.
         // Subscribe
         try
         {
-            SPDLOG_LOGGER_INFO(mLogger, "Subscribing {} to all streams", mPeer);
+            SPDLOG_LOGGER_INFO(mLogger,
+                               "Subscribing {} to all streams",
+                               mPeer);
             mSubscriptionManager->subscribe(mContext);
             mSubscribed = true;
             auto nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
@@ -366,7 +375,8 @@ Subscriber must provide access token in x-custom-auth-token header field.
         }
         catch (const std::exception &e)
         {
-            SPDLOG_LOGGER_WARN(mLogger, "{} failed to subscribe because {}",
+            SPDLOG_LOGGER_WARN(mLogger,
+                               "{} failed to subscribe because {}",
                                mPeer, std::string {e.what()});
             Finish(grpc::Status(grpc::StatusCode::INTERNAL,
                                 "Failed to subscribe"));
@@ -375,10 +385,12 @@ Subscriber must provide access token in x-custom-auth-token header field.
         nextWrite();
     }
 
+#ifndef NDEBUG
     ~AsynchronousWriter()
     {
         SPDLOG_LOGGER_INFO(mLogger, "In destructor");
     }
+#endif
 
 
     void OnWriteDone(bool ok) override
@@ -427,8 +439,10 @@ Subscriber must provide access token in x-custom-auth-token header field.
     }   
 
     void OnCancel() override 
-    {   
-        SPDLOG_LOGGER_INFO(mLogger, "Subscribe RPC cancelled for {}", mPeer);
+    {
+        SPDLOG_LOGGER_INFO(mLogger,
+                           "Subscribe RPC cancelled for {}",
+                           mPeer);
         if (mContext && mSubscribed)
         {
             mSubscriptionManager->unsubscribe(mContext);
