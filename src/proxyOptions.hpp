@@ -1,10 +1,12 @@
 #ifndef UDATA_PACKET_IMPORT_PROXY_PROXY_OPTIONS_HPP
 #define UDATA_PACKET_IMPORT_PROXY_PROXY_OPTIONS_HPP
 #include <memory>
+#include <optional>
 namespace UDataPacketImportProxy
 {
  class BackendOptions;
  class FrontendOptions;
+ class DuplicatePacketDetectorOptions;
 }
 namespace UDataPacketImportProxy
 {
@@ -28,6 +30,13 @@ public:
     void setQueueCapacity(int queueCapacity);
     /// @result The maximum internal queue size.
     [[nodiscard]] int getQueueCapacity() const noexcept;
+
+    /// @brief Sets the duplicate packet detector options.
+    /// @note This is useful when we expect a publisher to be scaled up
+    ///       prior to being purged from the system.
+    void setDuplicatePacketDetectorOptions(const DuplicatePacketDetectorOptions &options);
+    /// @result The duplicate packet detector options.
+    [[nodiscard]] std::optional<DuplicatePacketDetectorOptions> getDuplicatePacketDetectorOptions() const noexcept;
 
     /// @brief Destructor.
     ~ProxyOptions();

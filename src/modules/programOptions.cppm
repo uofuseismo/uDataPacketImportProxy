@@ -13,6 +13,7 @@ module;
 #include "frontendOptions.hpp"
 #include "backendOptions.hpp"
 #include "grpcOptions.hpp"
+#include "duplicatePacketDetector.hpp"
 
 export module programOptions;
 
@@ -268,6 +269,41 @@ UDataPacketImportProxy::ProxyOptions getProxyOptions(
 
     proxyOptions.setFrontendOptions(frontendOptions);
     proxyOptions.setBackendOptions(backendOptions);
+
+    DuplicatePacketDetectorOptions duplicateOptions;
+    auto duplicateCircularBufferSize
+        = propertyTree.get_optional<int>
+          ("Proxy.duplicateDetectorCircularBufferSize");
+    if (duplicateCircularBufferSize)
+    {
+        if (*duplicateCircularBufferSize < 1)
+        {
+            throw std::invalid_argument(
+                "duplicate detector cb size must be positive");
+        }
+        duplicateOptions.setCircularBufferSize(*duplicateCircularBufferSize);
+        proxyOptions.setDuplicatePacketDetectorOptions(duplicateOptions);
+    }
+    else
+    {
+        auto duplicateCircularBufferDuration
+            = propertyTree.get_optional<int>
+              ("Proxy.duplicateDetectorCircularBufferDurationInSeconds");
+        if (duplicateCircularBufferDuration)
+        {
+            if (*duplicateCircularBufferDuration < 1)
+            {
+                throw std::invalid_argument(
+                  "duplicate detector cb duration must be positive");
+            }
+            auto circularBufferDuration
+                = std::chrono::seconds {*duplicateCircularBufferDuration};
+            duplicateOptions.setCircularBufferDuration(circularBufferDuration);
+            proxyOptions.setDuplicatePacketDetectorOptions(duplicateOptions);
+        }
+    }
+
+    
     return proxyOptions;
 }
 

@@ -12,6 +12,7 @@
 #include "backendOptions.hpp"
 #include "frontend.hpp"
 #include "frontendOptions.hpp"
+#include "duplicatePacketDetector.hpp"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 import metrics;
 
@@ -30,6 +31,15 @@ public:
         if (mLogger == nullptr)
         {
             mLogger = spdlog::stdout_color_mt("ProxyConsole");
+        }
+        if (mOptions.getDuplicatePacketDetectorOptions())
+        {
+            auto duplicateDetectorOptions
+                = mOptions.getDuplicatePacketDetectorOptions();
+            mDuplicateDetector
+                = std::make_unique<DuplicatePacketDetector>
+                  (*duplicateDetectorOptions);
+            mRemoveDuplicates = true;
         }
         mImportExportQueueCapacity = mOptions.getQueueCapacity();
         mFrontend
@@ -91,6 +101,7 @@ public:
     {
 #ifndef NDEBUG
         assert(mBackend);
+        if (mRemoveDuplicates){assert(mDuplicateDetector);}
 #endif
         constexpr std::chrono::milliseconds timeOut{15};
         while (mKeepRunning.load())
@@ -98,6 +109,26 @@ public:
             UDataPacketImportAPI::V1::Packet packet;
             if (mImportExportQueue.try_pop(packet))
             {
+                // Check duplicates
+                if (mRemoveDuplicates)
+                {
+                    bool allow{false};
+                    try
+                    {
+                        allow = mDuplicateDetector->allow(packet);
+                    }
+                    catch (const std::exception &e)
+                    {
+                         SPDLOG_LOGGER_WARN(mLogger,
+                                            "Failed to check packet because {}",
+                                            std::string {e.what()});
+                    }
+                    if (!allow)
+                    {
+                        continue;
+                    }
+                }
+                // Okay, send them to the backend
                 try
                 {
                     mBackend->enqueuePacket(std::move(packet));
@@ -175,6 +206,8 @@ public:
 
     ProxyOptions mOptions;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
+    std::unique_ptr<DuplicatePacketDetector>
+        mDuplicateDetector{nullptr};
     UDataPacketImportProxy::Metrics::MetricsSingleton &mMetrics
     {   
         UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance()
@@ -193,6 +226,7 @@ public:
     std::unique_ptr<Frontend> mFrontend{nullptr};
     int mImportExportQueueCapacity{8192};
     std::atomic<bool> mKeepRunning{true};
+    bool mRemoveDuplicates{false};
     bool mWasStarted{false};
 };
 

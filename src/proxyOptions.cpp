@@ -1,6 +1,7 @@
 #include "proxyOptions.hpp"
 #include "frontendOptions.hpp"
 #include "backendOptions.hpp"
+#include "duplicatePacketDetector.hpp"
 
 using namespace UDataPacketImportProxy;
 
@@ -9,8 +10,9 @@ class ProxyOptions::ProxyOptionsImpl
 public:
     FrontendOptions mFrontendOptions;
     BackendOptions mBackendOptions;
+    DuplicatePacketDetectorOptions mDuplicatePacketDetectorOptions;
     int mQueueCapacity{8192};
-    int mDeduplicateCircularBufferSize{32};
+    bool mHaveDuplicatePacketDetectorOptions{false}; 
 };
 
 /// Constructor
@@ -87,3 +89,26 @@ int ProxyOptions::getQueueCapacity() const noexcept
     return pImpl->mQueueCapacity;
 }
 
+/// The duplicate packet detector options
+void ProxyOptions::setDuplicatePacketDetectorOptions(
+    const DuplicatePacketDetectorOptions &options)
+{
+    if (options.getCircularBufferSize() == std::nullopt &&
+        options.getCircularBufferDuration() == std::nullopt)
+    {
+        throw std::invalid_argument("Must size or duration");
+    }
+    pImpl->mDuplicatePacketDetectorOptions = options;
+    pImpl->mHaveDuplicatePacketDetectorOptions = true;
+}
+
+std::optional<DuplicatePacketDetectorOptions>
+    ProxyOptions::getDuplicatePacketDetectorOptions() const noexcept
+{
+    if (pImpl->mHaveDuplicatePacketDetectorOptions)
+    {
+        return std::make_optional<DuplicatePacketDetectorOptions>
+               (pImpl->mDuplicatePacketDetectorOptions);
+    }
+    return std::nullopt;
+}

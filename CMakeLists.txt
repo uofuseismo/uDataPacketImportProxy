@@ -43,7 +43,8 @@ set(LIBRARY_SRC
     src/backend.cpp
     src/backendOptions.cpp
     src/frontend.cpp
-    src/frontendOptions.cpp)
+    src/frontendOptions.cpp
+    src/duplicatePacketDetector.cpp)
 set(HEADER_FILES
     src/backend.hpp
     src/frontend.hpp
@@ -140,6 +141,7 @@ target_link_libraries(uDataPacketImportProxy
 
 add_executable(unitTests
                testing/grpc.cpp
+               testing/sanitizer.cpp 
                testing/proxy.cpp)
 set_target_properties(unitTests PROPERTIES
                       CXX_STANDARD 20
