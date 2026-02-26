@@ -3,7 +3,7 @@ project(uDataPacketImportProxy VERSION 0.0.3 LANGUAGES CXX)
 enable_testing()
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
-option(BUILD_FOR_DEBIAN "Build debian container for deployment" OFF)
+option(BUILD_CONTAINER "Build container for deployment" OFF)
 option(BUILD_TESTS "Compile unit tests" ON) 
 include(GenerateExportHeader)
 #include(FetchContent)
@@ -139,31 +139,32 @@ target_link_libraries(uDataPacketImportProxy
 #                                         Tests                                          #
 ##########################################################################################
 
-add_executable(unitTests
-               testing/grpc.cpp
-               testing/sanitizer.cpp 
-               testing/proxy.cpp)
-set_target_properties(unitTests PROPERTIES
-                      CXX_STANDARD 20
-                      CXX_STANDARD_REQUIRED YES
-                      CXX_EXTENSIONS NO)
-target_link_libraries(unitTests
-                      PUBLIC
-                         TBB::tbb
-                      PRIVATE
-                         uDataPacketImportProxy::libuDataPacketImportProxy 
-                         gRPC::grpc
-                         gRPC::grpc++
-                         opentelemetry-cpp::otlp_http_metric_exporter
-                         Threads::Threads
-                         Catch2::Catch2 Catch2::Catch2WithMain)
-target_include_directories(unitTests
-                           #PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src/modules>
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
-add_test(NAME unitTests
-         COMMAND unitTests)
-
+if (PROJECT_IS_TOP_LEVEL AND ${BUILD_TESTS})
+   add_executable(unitTests
+                  testing/grpc.cpp
+                  testing/sanitizer.cpp 
+                  testing/proxy.cpp)
+   set_target_properties(unitTests PROPERTIES
+                         CXX_STANDARD 20
+                         CXX_STANDARD_REQUIRED YES
+                         CXX_EXTENSIONS NO)
+   target_link_libraries(unitTests
+                         PUBLIC
+                            TBB::tbb
+                         PRIVATE
+                            uDataPacketImportProxy::libuDataPacketImportProxy 
+                            gRPC::grpc
+                            gRPC::grpc++
+                            opentelemetry-cpp::otlp_http_metric_exporter
+                            Threads::Threads
+                            Catch2::Catch2 Catch2::Catch2WithMain)
+   target_include_directories(unitTests
+                              #PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src/modules>
+                              PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+                              PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
+   add_test(NAME unitTests
+            COMMAND unitTests)
+endif()
 ##########################################################################################
 #                                      Installation                                      #
 ##########################################################################################
@@ -199,7 +200,7 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/uDataPacketImportProxyConfig.cmake
 #                                        Containers                                      #
 ##########################################################################################
 include(CPackComponent)
-if (${BUILD_FOR_DEBIAN})
+if (${BUILD_CONTAINER})
    message("Will configure debian container")
    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/scripts/Dockerfile.deb.in
                   ${CMAKE_CURRENT_BINARY_DIR}/Dockerfile.deb @ONLY)
@@ -246,7 +247,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
    if (RPMBUILD_PROGRAM)
       list(APPEND CPACK_GENERATOR RPM)
    endif()
-   #if (${BUILD_FOR_DEBIAN})
+   #if (${BUILD_CONTAINER})
    #   find_program(DPKG_PROGRAM dpkg REQUIRED)
    #else()
    #   find_program(DPKG_PROGRAM dpkg)

@@ -78,15 +78,15 @@ WORKDIR /home/ubuntu
 RUN mkdir -p /usr/local/include &&\
     mkdir -p /usr/local/lib &&\
     cd /home/ubuntu &&\
-    wget -q https://zlib.net/zlib-1.3.1.tar.gz &&\
-    tar -xf zlib-1.3.1.tar.gz &&\
-    rm zlib-1.3.1.tar.gz &&\
-    cd zlib-1.3.1  &&\
+    wget -q https://zlib.net/zlib-1.3.2.tar.gz &&\
+    tar -xf zlib-1.3.2.tar.gz &&\
+    rm zlib-1.3.2.tar.gz &&\
+    cd zlib-1.3.2  &&\
     CC=clang ./configure --prefix=/usr/local &&\
     make &&\
     make install &&\
     cd /home/ubuntu &&\
-    rm -r zlib-1.3.1 &&\
+    rm -r zlib-1.3.2 &&\
     wget -q https://github.com/catchorg/Catch2/archive/refs/tags/v3.12.0.tar.gz &&\
     tar -xf v3.12.0.tar.gz &&\
     rm v3.12.0.tar.gz &&\
@@ -182,16 +182,16 @@ RUN cd /home/ubuntu &&\
 #ENV Protobuf_DIR=/usr/local/grpc_no_otel/lib/cmake/
 
 RUN cd /home/ubuntu &&\
-    wget https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.24.0.tar.gz &&\
-    tar -xf v1.24.0.tar.gz &&\
-    rm v1.24.0.tar.gz &&\
-    cd opentelemetry-cpp-1.24.0 &&\
+    wget https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.25.0.tar.gz &&\
+    tar -xf v1.25.0.tar.gz &&\
+    rm v1.25.0.tar.gz &&\
+    cd opentelemetry-cpp-1.25.0 &&\
     cmake -B build -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release -DWITH_PROMETHEUS=OFF -DCMAKE_CXX_COMPILER=clang++ -DWITH_EXAMPLES=OFF -DWITH_ABI_VERSION_1=OFF -DWITH_ABI_VERSION_2=ON -DWITH_OTLP_HTTP=ON &&\
     cd build &&\
     make &&\
     make install &&\
     cd /home/ubuntu &&\
-    rm -r opentelemetry-cpp-1.24.0 &&\
+    rm -r opentelemetry-cpp-1.25.0 &&\
     git clone --recurse-submodules -b v1.76.0 --depth 1 --shallow-submodules https://github.com/grpc/grpc &&\
     cd grpc &&\
     mkdir build &&\
