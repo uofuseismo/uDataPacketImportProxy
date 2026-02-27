@@ -6,6 +6,7 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <tbb/concurrent_queue.h>
+#include <tbb/concurrent_map.h>
 #include "backend.hpp"
 #include "backendOptions.hpp"
 #include "grpcOptions.hpp"
@@ -94,7 +95,7 @@ public:
         return result; 
     }
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
-    tbb::concurrent_bounded_queue<UDataPacketImportAPI::V1::Packet> mQueue;
+    oneapi::tbb::concurrent_bounded_queue<UDataPacketImportAPI::V1::Packet> mQueue;
     int mQueueCapacity{32};
 };
 
@@ -120,7 +121,7 @@ public:
     // Number of subscribers
     [[nodiscard]] int getNumberOfSubscribers() const
     {
-        std::lock_guard<std::mutex> lock(mMutex);
+        //std::lock_guard<std::mutex> lock(mMutex);
         return mSubscribers.size();
     }
 
@@ -142,15 +143,16 @@ public:
     }
 
     // Subscribe
-    void subscribe(grpc::CallbackServerContext *context)
+    void subscribe(uintptr_t contextAddress, const std::string &peer)
     {
         if (!mKeepRunning.load()){return;}
         std::string errorMessage;
         bool alreadyExists{true};
-        auto contextMemoryAddress = reinterpret_cast<uintptr_t> (context);
+/*
         {
         std::lock_guard<std::mutex> lock(mMutex);
-        auto idx = mSubscribers.find(contextMemoryAddress);
+*/
+        auto idx = mSubscribers.find(contextAddress);
         // Add it
         if (idx == mSubscribers.end())
         {
@@ -158,24 +160,27 @@ public:
             auto packetStream
                 = std::make_unique<::PacketStream> (mQueueCapacity, mLogger);
             std::pair<uintptr_t, std::unique_ptr<::PacketStream>>
-                newPacketStream{contextMemoryAddress, std::move(packetStream)};
+                newPacketStream{contextAddress, std::move(packetStream)};
             try
             {
                 mSubscribers.insert(std::move(newPacketStream));
             }
             catch (const std::exception &e)
             {
-                errorMessage = "Failed to subscribe " + context->peer()
+                errorMessage = "Failed to subscribe " + peer
                              + " because "
                              + std::string {e.what()}; 
             }
         }
+/*
         }
+*/
         if (!alreadyExists)
         {
             if (errorMessage.empty())
             {
-                SPDLOG_LOGGER_INFO(mLogger, "Subscribed {}", context->peer());
+                SPDLOG_LOGGER_INFO(mLogger, "Subscribed {} ({})",
+                                   peer, std::to_string (contextAddress));
             }
             else
             {
@@ -185,33 +190,39 @@ public:
     }
 
     // Unsubscribe
-    void unsubscribe(grpc::CallbackServerContext *context)
+    void unsubscribe(uintptr_t contextAddress, const std::string &peer)
     {
         if (!mKeepRunning.load()){return;}
         std::string errorMessage;
         bool exists{false};
-        auto contextMemoryAddress = reinterpret_cast<uintptr_t> (context);
         {
         std::lock_guard<std::mutex> lock(mMutex);
-        auto idx = mSubscribers.find(contextMemoryAddress);
+        exists = mSubscribers.unsafe_erase(contextAddress) == 1 ? true : false;
+        }
+/*
+        {
+        std::lock_guard<std::mutex> lock(mMutex);
+        auto idx = mSubscribers.find(contextAddress);
         if (idx != mSubscribers.end())
         {
             exists = true;
             try
             {
-                mSubscribers.erase(idx);
+                mSubscribers.unsafe_erase(idx);
             }
             catch (const std::exception &e)
             {
-                errorMessage = "Failed to unsubscribe " + context->peer()
+                errorMessage = "Failed to unsubscribe " + peer
                              + " because " + std::string {e.what()};
             }
         }
         }
+*/
         if (!exists)
         { 
-            SPDLOG_LOGGER_WARN(mLogger, "{} was not subscribed",
-                               context->peer());
+            SPDLOG_LOGGER_WARN(mLogger, "{} ({}) was not subscribed",
+                               peer,
+                               std::to_string(contextAddress));
         }
         else
         {
@@ -226,7 +237,7 @@ public:
     void enqueuePacket(const UDataPacketImportAPI::V1::Packet &packet)
     {
         if (!mKeepRunning.load()){return;}
-        std::lock_guard<std::mutex> lock(mMutex);
+        //std::lock_guard<std::mutex> lock(mMutex);
         for (auto &subscriber : mSubscribers)
         {
             try
@@ -255,8 +266,10 @@ public:
         if (!mKeepRunning.load()){return result;}
         bool exists{false};
         auto contextMemoryAddress = reinterpret_cast<uintptr_t> (context);
+/*
         {   
         std::lock_guard<std::mutex> lock(mMutex);
+*/
         auto idx = mSubscribers.find(contextMemoryAddress);
         if (idx != mSubscribers.end())
         {
@@ -278,7 +291,9 @@ public:
         {
             exists = false;
         }
+/*
         }
+*/
         if (!exists)
         {
             auto errorMessage = context->peer()
@@ -290,7 +305,7 @@ public:
 
     mutable std::mutex mMutex;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
-    std::map<uintptr_t, std::unique_ptr<::PacketStream>> mSubscribers;
+    oneapi::tbb::concurrent_map<uintptr_t, std::unique_ptr<::PacketStream>> mSubscribers;
     int mQueueCapacity{32};
     std::atomic<bool> mKeepRunning{true};
 };
@@ -309,6 +324,7 @@ public:
         std::atomic<bool> *keepRunning) :
         mOptions(options),
         mContext(context),
+        mContextAddress(reinterpret_cast<uintptr_t> (mContext)),
         mSubscriptionManager(subscriptionManager),
         mLogger(logger),
         mKeepRunning(keepRunning)
@@ -362,7 +378,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
             SPDLOG_LOGGER_INFO(mLogger,
                                "Subscribing {} to all streams",
                                mPeer);
-            mSubscriptionManager->subscribe(mContext);
+            mSubscriptionManager->subscribe(mContextAddress, mPeer);
             mSubscribed = true;
             auto nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
             auto utilization
@@ -392,7 +408,6 @@ Subscriber must provide access token in x-custom-auth-token header field.
     }
 #endif
 
-
     void OnWriteDone(bool ok) override
     {
         if (!ok)
@@ -410,7 +425,6 @@ Subscriber must provide access token in x-custom-auth-token header field.
         // Packet is flushed; can now safely purge the element to write
         mWriteInProgress = false;
         mPacketsQueue.pop();
-        mMetrics.incrementSentPacketsCounter();
         // Start next write
         nextWrite();
     }
@@ -422,7 +436,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
     { 
         if (mContext && mSubscribed)
         {
-            mSubscriptionManager->unsubscribe(mContext);
+            mSubscriptionManager->unsubscribe(mContextAddress, mPeer);
             mSubscribed = false;
         }
         int nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
@@ -445,7 +459,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
                            mPeer);
         if (mContext && mSubscribed)
         {
-            mSubscriptionManager->unsubscribe(mContext);
+            mSubscriptionManager->unsubscribe(mContextAddress, mPeer);
             mSubscribed = false;
         }    
     }   
@@ -464,6 +478,8 @@ private:
             {
                 const auto &packet = mPacketsQueue.front();
                 mWriteInProgress = true;
+                //std::cout << mContextAddress << " " << mMetrics.getSentPacketsCount() << " " << mMetrics.getReceivedPacketsCount() << std::endl;
+                mMetrics.incrementSentPacketsCounter();
                 StartWrite(&packet);
                 return;
             }
@@ -508,7 +524,7 @@ private:
             // The context is still valid so try to remove it from the
             // subscriptoins.  This can be the case whether the server is
             // shutting down or the client bailed.
-            mSubscriptionManager->unsubscribe(mContext);
+            mSubscriptionManager->unsubscribe(mContextAddress, mPeer);
             mSubscribed = false;
             if (mContext->IsCancelled())
             {
@@ -534,6 +550,7 @@ private:
     }
     BackendOptions mOptions;
     grpc::CallbackServerContext *mContext{nullptr};
+    uintptr_t mContextAddress;
     std::shared_ptr<::SubscriptionManager> mSubscriptionManager{nullptr};
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     UDataPacketImportProxy::Metrics::MetricsSingleton &mMetrics

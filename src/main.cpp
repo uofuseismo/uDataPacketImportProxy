@@ -36,14 +36,11 @@ class ServerImpl
 {
 public:
     explicit ServerImpl(const UDataPacketImportProxy::Options::ProgramOptions &options,
-                        std::shared_ptr<spdlog::logger> logger,
-                        UDataPacketImportProxy::Metrics::MetricsSingleton *metrics) :
-        mLogger(logger),
-        mMetrics(metrics)
+                        std::shared_ptr<spdlog::logger> logger) :
+        mLogger(logger)
     {
 #ifndef NDEBUG
         assert(mLogger != nullptr);
-        assert(mMetrics != nullptr);
 #endif
         mProxy
            = std::make_unique<UDataPacketImportProxy::Proxy>
@@ -72,7 +69,7 @@ public:
 
             sentPacketsCounter
                 = meter->CreateInt64ObservableCounter(
-                  "seismic_data.import.grpc_proxy.client.sent.packets",
+                  "seismic_data.import.grpc_proxy.server.sent.packets",
                   "Number of packets sent to from import proxy backend to subscribers",
                   "{packet}");
             sentPacketsCounter->AddCallback(
@@ -156,27 +153,39 @@ public:
     // Print some summary statistics
     void printSummary()
     {
-        if (mMetrics == nullptr){return;}
         if (mOptions.printSummaryInterval.count() <= 0){return;}
         auto now = UDataPacketImportProxy::Utilities::getNow();
         if (now > mLastPrintSummary + mOptions.printSummaryInterval)
         {
+            auto &metrics
+                = UDataPacketImportProxy::Metrics::MetricsSingleton
+                                                 ::getInstance();
             mLastPrintSummary = now;
 
             auto nPublishers = mProxy->getNumberOfPublishers();
             auto nSubscribers = mProxy->getNumberOfSubscribers(); 
-            auto nReceived = mMetrics->getReceivedPacketsCount();
-            auto nSent = mMetrics->getSentPacketsCount();
-            auto nPacketsReceived = nReceived - mReportNumberOfPacketsReceived;
-            auto nPacketsSent = nSent - mReportNumberOfPacketsSent;
-            mReportNumberOfPacketsReceived = nReceived;
-            mReportNumberOfPacketsSent = nSent;
-            SPDLOG_LOGGER_INFO(mLogger,
+            if (mOptions.exportMetrics)
+            {
+                auto nReceived = metrics.getReceivedPacketsCount();
+                auto nSent = metrics.getSentPacketsCount();
+                auto nPacketsReceived = nReceived - mReportNumberOfPacketsReceived;
+                auto nPacketsSent = nSent - mReportNumberOfPacketsSent;
+                mReportNumberOfPacketsReceived = nReceived;
+                mReportNumberOfPacketsSent = nSent;
+                SPDLOG_LOGGER_INFO(mLogger,
                                "Current number of publishers {}.  Current number of subscribers {}.  Packets received since last report {}.  Packets sent since last report {}.",
-                               nPublishers,
-                               nSubscribers,
-                               nPacketsReceived,
-                               nPacketsSent);
+                                   nPublishers,
+                                   nSubscribers,
+                                   nPacketsReceived,
+                                   nPacketsSent);
+            }
+            else
+            {
+                SPDLOG_LOGGER_INFO(mLogger,
+                               "Current number of publishers {}.  Current number of subscribers {}.",
+                                   nPublishers,
+                                   nSubscribers);
+            }
         } 
     } 
 
@@ -243,7 +252,6 @@ public:
     mutable std::mutex mStopMutex;
     UDataPacketImportProxy::Options::ProgramOptions mOptions;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
-    UDataPacketImportProxy::Metrics::MetricsSingleton *mMetrics{nullptr};
     std::vector<std::future<void>> mFutures;
     std::unique_ptr<UDataPacketImportProxy::Proxy> mProxy{nullptr};
     std::condition_variable mStopCondition;
@@ -303,7 +311,7 @@ int main(int argc, char *argv[])
      }
 
     auto logger = UDataPacketImportProxy::Logger::initialize(programOptions);
-    auto metrics = &UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance();
+    UDataPacketImportProxy::Metrics::initializeMetricsSingleton();
     try
     {
         if (programOptions.exportMetrics)
@@ -324,7 +332,7 @@ int main(int argc, char *argv[])
     absl::InitializeLog();
     try
     {
-        ::ServerImpl server{programOptions, logger, metrics};
+        ::ServerImpl server{programOptions, logger};
         server.start();
         UDataPacketImportProxy::Metrics::cleanup();
         UDataPacketImportProxy::Logger::cleanup();

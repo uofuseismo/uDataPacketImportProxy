@@ -204,10 +204,6 @@ public:
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::unique_ptr<DuplicatePacketDetector>
         mDuplicateDetector{nullptr};
-    UDataPacketImportProxy::Metrics::MetricsSingleton &mMetrics
-    {   
-        UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance()
-    };
     std::function<void (UDataPacketImportAPI::V1::Packet &&)>
         mAddPacketCallback
     {   

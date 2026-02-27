@@ -43,7 +43,7 @@ export struct ProgramOptions
     OTelHTTPMetricsOptions otelHTTPMetricsOptions;
     OTelHTTPLogOptions otelHTTPLogOptions;
     UDataPacketImportProxy::ProxyOptions proxyOptions;
-    std::chrono::seconds printSummaryInterval{3600};
+    std::chrono::seconds printSummaryInterval{std::chrono::minutes {15}};
     int verbosity{3};
     bool exportLogs{false};
     bool exportMetrics{false};

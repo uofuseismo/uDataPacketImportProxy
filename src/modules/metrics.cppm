@@ -138,6 +138,11 @@ private:
     std::atomic<double> mSubscriberUtilization{0};
 };
 
+export void initializeMetricsSingleton()
+{
+    MetricsSingleton::getInstance();
+}
+
 export void observeNumberOfPacketsReceived(
     opentelemetry::metrics::ObserverResult observerResult,
     void *)
