@@ -51,6 +51,26 @@ bool comparePackets(const std::vector<UDataPacketImportAPI::V1::Packet> &lhs,
         if (lhs.at(i).number_of_samples() != rhs.at(i).number_of_samples())
         {
             return false;
+        } 
+        if (lhs[i].stream_identifier().network() !=
+            rhs[i].stream_identifier().network())
+        {
+            return false;
+        }
+        if (lhs[i].stream_identifier().station() !=
+            rhs[i].stream_identifier().station())
+        {
+            return false;
+        }
+        if (lhs[i].stream_identifier().channel() !=
+            rhs[i].stream_identifier().channel())
+        {
+            return false;
+        }
+        if (lhs[i].stream_identifier().location_code() !=
+            rhs[i].stream_identifier().location_code())
+        {
+            return false;
         }
         if (std::abs(lhs[i].sampling_rate() - rhs[i].sampling_rate()) >
             1.e-14)

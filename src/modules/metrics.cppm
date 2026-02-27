@@ -161,7 +161,6 @@ export void observeNumberOfPacketsReceived(
         {
             auto &instance = MetricsSingleton::getInstance();
             auto value = instance.getReceivedPacketsCount();
-            //auto value = observableReceivedPacketsCounter.load();
             observer->Observe(value);
         }
         catch (const std::exception &e)
@@ -194,7 +193,6 @@ export void observeNumberOfPacketsSent(
         {
             auto &instance = MetricsSingleton::getInstance();
             auto value = instance.getSentPacketsCount();
-            //auto value = observableSentPacketsCounter.load();
             observer->Observe(value);
         }
         catch (const std::exception &e) 
@@ -227,7 +225,6 @@ export void observePublisherUtilization(
         {
             auto &instance = MetricsSingleton::getInstance();
             auto value = instance.getPublisherUtilization();
-            //auto value = observablePublisherUtilization.load();
             observer->Observe(value);
         }
         catch (const std::exception &e)
@@ -260,7 +257,6 @@ export void observeSubscriberUtilization(
         {
             auto &instance = MetricsSingleton::getInstance();
             auto value = instance.getSubscriberUtilization();
-            //auto value = observableSubscriberUtilization.load();
             observer->Observe(value);
         }
         catch (const std::exception &e)
