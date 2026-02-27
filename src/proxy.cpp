@@ -127,7 +127,14 @@ public:
                 // Okay, send them to the backend
                 try
                 {
-                    mBackend->enqueuePacket(std::move(packet));
+                    auto nPacketsLost
+                        = mBackend->enqueuePacket(std::move(packet));
+                    if (nPacketsLost > 0)
+                    {
+                        SPDLOG_LOGGER_WARN(mLogger,
+                           "Over-wrote {} packets in the outbound queue - consider increasing backend queueSize",
+                           nPacketsLost);
+                    }
                 }
                 catch (const std::exception &e) 
                 {

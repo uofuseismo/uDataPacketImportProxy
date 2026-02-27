@@ -52,16 +52,18 @@ public:
         mQueueCapacity = queueCapacity;
         mQueue.set_capacity(mQueueCapacity);
     }
-    void enqueuePacket(const UDataPacketImportAPI::V1::Packet &packet)
+    [[nodiscard]] int enqueuePacket(const UDataPacketImportAPI::V1::Packet &packet)
     {
         auto copy = packet;
-        enqueuePacket(std::move(copy));
+        return enqueuePacket(std::move(copy));
     }
-    void enqueuePacket(UDataPacketImportAPI::V1::Packet &&packet)
+    [[nodiscard]] int enqueuePacket(UDataPacketImportAPI::V1::Packet &&packet)
     {
+        int packetsLost{0};
         auto approximateSize = static_cast<int> (mQueue.size());
         if (approximateSize >= mQueueCapacity)
         {
+            //SPDLOG_LOGGER_WARN(mLogger, "Overfull outbound queue");
             while (approximateSize >= mQueueCapacity)
             {
                 UDataPacketImportAPI::V1::Packet workSpace;
@@ -71,6 +73,7 @@ public:
                                        "Failed to pop element from stream queue");
                     break;
                 }
+                packetsLost = packetsLost + 1; 
                 approximateSize = static_cast<int> (mQueue.size());
             }
         } 
@@ -80,6 +83,7 @@ public:
             SPDLOG_LOGGER_ERROR(mLogger,
                                  "Failed to add packet to stream queue");
         }
+        return packetsLost;
     }
     [[nodiscard]] std::optional<UDataPacketImportAPI::V1::Packet>
         dequeuePacket()
@@ -96,7 +100,7 @@ public:
     }
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     oneapi::tbb::concurrent_bounded_queue<UDataPacketImportAPI::V1::Packet> mQueue;
-    int mQueueCapacity{32};
+    int mQueueCapacity{1024};
 };
 
 class SubscriptionManager
@@ -234,9 +238,10 @@ public:
     }
 
     /// Adds a packet
-    void enqueuePacket(const UDataPacketImportAPI::V1::Packet &packet)
+    [[nodiscard]] int enqueuePacket(const UDataPacketImportAPI::V1::Packet &packet)
     {
-        if (!mKeepRunning.load()){return;}
+        int nPacketsLost{0};
+        if (!mKeepRunning.load()){return nPacketsLost;}
         //std::lock_guard<std::mutex> lock(mMutex);
         for (auto &subscriber : mSubscribers)
         {
@@ -245,7 +250,8 @@ public:
 #ifndef NDEBUG
                 assert(subscriber.second != nullptr);
 #endif
-                subscriber.second->enqueuePacket(packet);
+                nPacketsLost = nPacketsLost
+                             + subscriber.second->enqueuePacket(packet);
             }
             catch (const std::exception &e)
             {
@@ -254,6 +260,7 @@ public:
                      std::string {e.what()}); 
             } 
         }
+        return nPacketsLost;
     } 
 
     // Get next batch of packets
@@ -306,7 +313,7 @@ public:
     mutable std::mutex mMutex;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     oneapi::tbb::concurrent_map<uintptr_t, std::unique_ptr<::PacketStream>> mSubscribers;
-    int mQueueCapacity{32};
+    int mQueueCapacity{124};
     std::atomic<bool> mKeepRunning{true};
 };
 
@@ -687,10 +694,10 @@ void Backend::stop()
 }
 
 /// Enqueue packet
-void Backend::enqueuePacket(UDataPacketImportAPI::V1::Packet &&packet)
+int Backend::enqueuePacket(UDataPacketImportAPI::V1::Packet &&packet)
 {
     auto copy = packet;
-    pImpl->mSubscriptionManager->enqueuePacket(std::move(copy));;
+    return pImpl->mSubscriptionManager->enqueuePacket(std::move(copy));;
 }
 
 /// Number of subscribers

@@ -20,7 +20,10 @@ public:
 
     void stop();
     void start();
-    void enqueuePacket(UDataPacketImportAPI::V1::Packet &&packet);
+    /// @brief Enqueues the next packet.
+    /// @result The number of packets overwritten in the outbound queue.
+    ///         This should be zero.
+    [[nodiscard]] int enqueuePacket(UDataPacketImportAPI::V1::Packet &&packet);
     [[nodiscard]] int getNumberOfSubscribers() const;
     [[nodiscard]] bool isRunning() const noexcept;
 

@@ -8,7 +8,7 @@ class BackendOptions::BackendOptionsImpl
 public:
     GRPCOptions mGRPCOptions;
     int mMaximumNumberOfSubscribers{32};
-    int mQueueCapacity{32};
+    int mQueueCapacity{1024};
 };
 
 /// Constructor
