@@ -317,10 +317,7 @@ int main(int argc, char *argv[])
         SPDLOG_LOGGER_CRITICAL(logger,
                                "Failed to initialize metrics because {}",
                                std::string {e.what()});
-        if (programOptions.exportLogs)
-        {
-            UDataPacketImportProxy::Logger::cleanup();
-        }
+        UDataPacketImportProxy::Logger::cleanup();
         return EXIT_FAILURE;
     }
  
@@ -329,28 +326,15 @@ int main(int argc, char *argv[])
     {
         ::ServerImpl server{programOptions, logger, metrics};
         server.start();
-        if (programOptions.exportMetrics)
-        {
-            UDataPacketImportProxy::Metrics::cleanup();
-        }
-        if (programOptions.exportLogs)
-        {
-            SPDLOG_LOGGER_INFO(logger, "Cleaning up logger");
-            UDataPacketImportProxy::Logger::cleanup();
-        }
+        UDataPacketImportProxy::Metrics::cleanup();
+        UDataPacketImportProxy::Logger::cleanup();
     }
     catch (const std::exception &e)
     {
         SPDLOG_LOGGER_CRITICAL(logger, "Proxy service exited with error {}",
                                std::string {e.what()});
-        if (programOptions.exportMetrics)
-        {
-            UDataPacketImportProxy::Metrics::cleanup();
-        }
-        if (programOptions.exportLogs)
-        {
-             UDataPacketImportProxy::Logger::cleanup();
-        }
+        UDataPacketImportProxy::Metrics::cleanup();
+        UDataPacketImportProxy::Logger::cleanup();
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;

@@ -1,16 +1,19 @@
 #include <vector>
+#include <cmath>
 #include <string>
 #include <chrono>
 #include <queue>
 #include <grpc/grpc.h>
 #include <grpcpp/grpcpp.h>
 #include <absl/log/initialize.h>
+#include <google/protobuf/util/time_util.h>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include "uDataPacketImportAPI/v1/backend.grpc.pb.h"
 #include "uDataPacketImportAPI/v1/frontend.grpc.pb.h"
 #include "grpcOptions.hpp"
@@ -30,9 +33,43 @@ import metrics;
 #define BACKEND_HOST "localhost"
 #define BACKEND_PORT 58152
 
+std::vector<UDataPacketImportAPI::V1::Packet> referencePackets;
+
+std::shared_ptr<spdlog::logger> proxyLogger{nullptr};
+
+int64_t expectedPacketsReceived{0};
+int64_t expectedPacketsSent{0};
+
+
+bool comparePackets(const std::vector<UDataPacketImportAPI::V1::Packet> &lhs,
+                    const std::vector<UDataPacketImportAPI::V1::Packet> &rhs)
+{
+    if (lhs.size() != rhs.size()){return true;}
+    auto nPackets = static_cast<int> (lhs.size());
+    for (int i = 0; i < nPackets; ++i)
+    {
+        if (lhs.at(i).number_of_samples() != rhs.at(i).number_of_samples())
+        {
+            return false;
+        }
+        if (std::abs(lhs[i].sampling_rate() - rhs[i].sampling_rate()) >
+            1.e-14)
+        {
+            return false;
+        }
+        if (lhs[i].start_time() != rhs[i].start_time())
+        {
+            return false;
+        }
+        if (lhs[i].data_type() != rhs[i].data_type()){return false;}
+        if (lhs[i].data() != rhs[i].data()){return false;}
+    }
+    return true;
+}
 
 void runProxy()
 {
+    
     UDataPacketImportProxy::GRPCOptions feGRPCOptions;
     feGRPCOptions.setHost(FRONTEND_BIND_HOST);
     feGRPCOptions.setPort(static_cast<uint16_t> (FRONTEND_PORT));
@@ -49,14 +86,17 @@ void runProxy()
     proxyOptions.setFrontendOptions(feOptions);
     proxyOptions.setBackendOptions(beOptions);    
 
-    std::shared_ptr<spdlog::logger> logger{nullptr};
     auto metrics
-         = &UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance();
-    UDataPacketImportProxy::Proxy proxy{proxyOptions, logger};
+        = &UDataPacketImportProxy::Metrics::MetricsSingleton::getInstance();
+    metrics->resetCounters();
+    UDataPacketImportProxy::Proxy proxy{proxyOptions, proxyLogger};
 
     proxy.start();
     std::this_thread::sleep_for(std::chrono::seconds {3});
     proxy.stop();
+    REQUIRE(metrics->getReceivedPacketsCount() == expectedPacketsReceived);
+    REQUIRE(metrics->getSentPacketsCount() == expectedPacketsSent);
+    //std::cout << metrics->getSentPacketsCount() << std::endl;
 }
 
 void asyncPacketPublisher(
@@ -208,36 +248,71 @@ void asyncSubscriber()
     std::vector<UDataPacketImportAPI::V1::Packet> receivedPackets;
     Subscriber subscriber(stub.get(), &receivedPackets);
     auto status = subscriber.await();
-    if (status.ok())
-    {
-        std::cout << "got this many: " << receivedPackets.size() << std::endl;
-    }
-    else
-    {
-        std::cout << "oy" << std::endl;
-    }
+    REQUIRE(status.ok());
+    REQUIRE(::comparePackets(receivedPackets, referencePackets));
 }
 
 TEST_CASE("uDataPacketImportProxy::Proxy", "[streamSelector]")
 {
-    auto allPackets = ::generatePackets(5, "UU", "CWU", "HHZ", "01");
-    auto hhnPackets = ::generatePackets(5, "UU", "CWU", "HHN", "01");
-    allPackets.insert(allPackets.end(), hhnPackets.begin(), hhnPackets.end());
-    std::sort(allPackets.begin(), allPackets.end(),
-              [](const auto &lhs, const auto &rhs)
-              {   
-                  return lhs.start_time() < rhs.start_time();
-              }); 
+    SECTION("Single Publisher/Single Subscriber")
+    {
+        proxyLogger = spdlog::stdout_color_mt("proxyConsoleLogger1");
+        auto allPackets = ::generatePackets(5, "UU", "CWU", "HHZ", "01");
+        auto hhnPackets = ::generatePackets(5, "UU", "CWU", "HHN", "01");
+        auto hhePackets = ::generatePackets(5, "UU", "CWU", "HHE", "01");
+        allPackets.insert(allPackets.end(), hhnPackets.begin(), hhnPackets.end());
+        allPackets.insert(allPackets.end(), hhePackets.begin(), hhePackets.end());
+        std::sort(allPackets.begin(), allPackets.end(),
+                  [](const auto &lhs, const auto &rhs)
+                  {   
+                      return lhs.start_time() < rhs.start_time();
+                  }); 
+        referencePackets = allPackets;
+        expectedPacketsReceived = allPackets.size();
+        expectedPacketsSent = allPackets.size();
+
+        auto proxyThread = std::thread(&runProxy);
+        std::this_thread::sleep_for(std::chrono::milliseconds {50});
+
+        auto subscriberThread1 = std::thread(&asyncSubscriber);
+        std::this_thread::sleep_for(std::chrono::milliseconds {10});
+
+        auto publisherThread = std::thread(&asyncPacketPublisher, allPackets);
+        if (publisherThread.joinable()){publisherThread.join();}
+        if (proxyThread.joinable()){proxyThread.join();}
+        if (subscriberThread1.joinable()){subscriberThread1.join();}
+        proxyLogger = nullptr;
+    }
+
+    SECTION("Single Publisher/Multiple Subscribers")
+    {
+        proxyLogger = spdlog::stdout_color_mt("proxyConsoleLogger2");
+        auto allPackets = ::generatePackets(5, "UU", "CWU", "HHZ", "01");
+        auto hhnPackets = ::generatePackets(5, "UU", "CWU", "HHN", "01");
+        allPackets.insert(allPackets.end(), hhnPackets.begin(), hhnPackets.end());
+        std::sort(allPackets.begin(), allPackets.end(),
+                  [](const auto &lhs, const auto &rhs)
+                  {   
+                      return lhs.start_time() < rhs.start_time();
+                  }); 
+        referencePackets = allPackets;
+        expectedPacketsReceived = allPackets.size();
+        expectedPacketsSent = 2*allPackets.size();
     
-    auto proxyThread = std::thread(&runProxy);
-    std::this_thread::sleep_for(std::chrono::milliseconds {50});
+        auto proxyThread = std::thread(&runProxy);
+        std::this_thread::sleep_for(std::chrono::milliseconds {50});
 
-    auto subscriberThread = std::thread(&asyncSubscriber);
-    std::this_thread::sleep_for(std::chrono::milliseconds {10});
+        auto subscriberThread1 = std::thread(&asyncSubscriber);
+        auto subscriberThread2 = std::thread(&asyncSubscriber);
+        std::this_thread::sleep_for(std::chrono::milliseconds {10});
 
-    auto publisherThread = std::thread(&asyncPacketPublisher, allPackets);
-    if (publisherThread.joinable()){publisherThread.join();}
-    if (proxyThread.joinable()){proxyThread.join();} 
-    if (subscriberThread.joinable()){subscriberThread.join();}    
+        auto publisherThread = std::thread(&asyncPacketPublisher, allPackets);
+        if (publisherThread.joinable()){publisherThread.join();}
+        if (proxyThread.joinable()){proxyThread.join();} 
+        if (subscriberThread1.joinable()){subscriberThread1.join();}    
+        if (subscriberThread2.joinable()){subscriberThread2.join();}
+        proxyLogger = nullptr;
+    }
+
 }
 

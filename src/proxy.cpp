@@ -77,11 +77,7 @@ public:
                 approximateSize = static_cast<int> (mImportExportQueue.size());
             }
             // Try to add the packet
-            if (mImportExportQueue.try_push(std::move(packet)))
-            {
-                mMetrics.incrementReceivedPacketsCounter();
-            }
-            else
+            if (!mImportExportQueue.try_push(std::move(packet)))
             {
                 SPDLOG_LOGGER_ERROR(
                     mLogger,

@@ -26,6 +26,8 @@ import programOptions;
 namespace UDataPacketImportProxy::Metrics
 {
 
+bool metricsInitialized{false};
+
 export void initialize(const Options::ProgramOptions &programOptions)
 {
     if (!programOptions.exportMetrics){return;}
@@ -63,12 +65,17 @@ export void initialize(const Options::ProgramOptions &programOptions)
         provider(std::move(metricsProvider));
 
     otel::sdk::metrics::Provider::SetMeterProvider(provider);
+    metricsInitialized = true;
 }
 
 export void cleanup()
 {
-     std::shared_ptr<opentelemetry::metrics::MeterProvider> none;
-     opentelemetry::sdk::metrics::Provider::SetMeterProvider(none);
+    if (metricsInitialized)
+    {
+        std::shared_ptr<opentelemetry::metrics::MeterProvider> none;
+        opentelemetry::sdk::metrics::Provider::SetMeterProvider(none);
+    }
+    metricsInitialized = false;
 }
 
 export class MetricsSingleton
@@ -103,7 +110,7 @@ public:
     }
     [[nodiscard]] double getPublisherUtilization() const noexcept
     {
-       return mPublisherUtilization.load();
+        return mPublisherUtilization.load();
     }
     void updateSubscriberUtilization(const double utilization)
     {
@@ -111,8 +118,13 @@ public:
     }
     [[nodiscard]] double getSubscriberUtilization() const noexcept
     {
-       return mSubscriberUtilization.load();
+        return mSubscriberUtilization.load();
     }
+    void resetCounters()
+    {
+        mReceivedPacketsCounter.store(0);
+        mSentPacketsCounter.store(0);
+    } 
     MetricsSingleton(const MetricsSingleton &) = delete;
     MetricsSingleton(MetricsSingleton &&) noexcept = delete;
     MetricsSingleton& operator=(const MetricsSingleton &) = delete;
