@@ -35,8 +35,7 @@ RUN apt-get update &&\
     apt-get install -y autoconf &&\
     apt-get install -y make &&\
     apt-get install -y cmake &&\
-    apt-get install -y ninja-build &&\
-    apt-get install -y bazel-bootstrap
+    apt-get install -y ninja-build
 
 RUN wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
 | gpg --dearmor | tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null &&\
@@ -72,9 +71,19 @@ RUN wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRO
 #     rm -r /opt/intel/oneapi/ccl &&\
 #     rm -r /opt/intel/oneapi/compiler
 
-# Usually good to have zlib and I need boost but not everything in dev-all
 WORKDIR /home/ubuntu
+ENV USE_BAZEL_VERSION="8.6.0"
+RUN cd /home/ubuntu &&\
+    wget https://github.com/bazelbuild/bazelisk/releases/download/v1.28.1/bazelisk-linux-amd64 &&\
+    chmod 755 bazelisk-linux-amd64 &&\
+    mv bazelisk-linux-amd64 /usr/local/bin/bazelisk &&\
+    /usr/local/bin/bazelisk version &&\
+    wget https://github.com/conan-io/conan/releases/download/2.26.1/conan-2.26.1-linux-x86_64.tgz &&\
+    tar -xvf conan-2.26.1-linux-x86_64.tgz &&\
+    rm conan-2.26.1-linux-x86_64.tgz &&\
+    mv bin/** /usr/local/bin/
 
+# Usually good to have zlib and I need boost but not everything in dev-all
 RUN mkdir -p /usr/local/include &&\
     mkdir -p /usr/local/lib &&\
     cd /home/ubuntu &&\

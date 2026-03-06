@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.28)
 project(uDataPacketImportProxy VERSION 0.0.5 LANGUAGES CXX)
 enable_testing()
 
+find_program(CCACHE_PROGRAM ccache)
+if (CCACHE_PROGRAM)
+   set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+endif()
+
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
 option(BUILD_CONTAINER "Build container for deployment" OFF)
 option(BUILD_TESTS "Compile unit tests" ON) 
@@ -18,7 +23,8 @@ find_package(absl CONFIG REQUIRED)
 find_package(utf8_range CONFIG REQUIRED)
 find_package(Protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
-find_package(opentelemetry-cpp REQUIRED)
+find_package(opentelemetry-cpp CONFIG REQUIRED COMPONENTS exporters_otlp_http)# exporter_otlp_grpc)
+#find_package(opentelemetry-cpp CONFIG REQUIRED)# COMPONENTS exporters_otlp_grpc otlp_http_log_record_exporter otlp_http_metric_exporter)
 find_package(spdlog REQUIRED)
 find_package(Boost REQUIRED headers program_options REQUIRED)
 find_package(TBB COMPONENTS tbb REQUIRED)
@@ -78,8 +84,14 @@ target_link_libraries(libuDataPacketImportProxy
                       PRIVATE gRPC::grpc
                               gRPC::grpc++
                               protobuf::libprotobuf
+                              opentelemetry-cpp::otlp_http_exporter_builder
+                              opentelemetry-cpp::otlp_http_metric_exporter_builder
                               opentelemetry-cpp::otlp_http_log_record_exporter
-                              opentelemetry-cpp::otlp_http_metric_exporter
+                              #opentelemetry-cpp::otlp_grpc_exporter_builder
+                              #opentelemetry-cpp::otlp_grpc_metric_exporter_builder
+                              #opentelemetry-cpp::otlp_grpc_log_record_exporter
+                              #opentelemetry-cpp::exporter_otlp_grpc_metric
+                              #opentelemetry-cpp::exporter_otlp_http_log
                               spdlog::spdlog_header_only
                               Boost::headers
                               Boost::program_options
@@ -128,8 +140,11 @@ target_link_libraries(uDataPacketImportProxy
                          uDataPacketImportProxy::libuDataPacketImportProxy
                          gRPC::grpc
                          gRPC::grpc++
-                         opentelemetry-cpp::otlp_http_log_record_exporter
-                         opentelemetry-cpp::otlp_http_metric_exporter
+                         opentelemetry-cpp::otlp_http_exporter
+                         #opentelemetry-cpp::otlp_http_log_record_exporter
+                         #opentelemetry-cpp::otlp_http_metric_exporter
+                         #opentelemetry-cpp::exporter_otlp_http_metric
+                         #opentelemetry-cpp::exporter_otlp_http_log
                          spdlog::spdlog_header_only
                          Boost::headers
                          Boost::program_options
@@ -155,7 +170,10 @@ if (PROJECT_IS_TOP_LEVEL AND ${BUILD_TESTS})
                             uDataPacketImportProxy::libuDataPacketImportProxy 
                             gRPC::grpc
                             gRPC::grpc++
-                            opentelemetry-cpp::otlp_http_metric_exporter
+                            opentelemetry-cpp::otlp_http_exporter
+                            #opentelemetry-cpp::otlp_http_metric_exporter
+                            #opentelemetry-cpp::exporter_otlp_http_metric
+                            #opentelemetry-cpp::exporter_otlp_http_log
                             Threads::Threads
                             Catch2::Catch2 Catch2::Catch2WithMain)
    target_include_directories(unitTests

@@ -344,8 +344,6 @@ public:
                 mPeer = mPeer + " (" + request->identifier() + ")";
             }
         }
-        auto maximumNumberOfSubscribers
-            = mOptions.getMaximumNumberOfSubscribers();
         // Authenticate
         if (isSecured &&
             mOptions.getGRPCOptions().getAccessToken() != std::nullopt)
@@ -369,6 +367,10 @@ Subscriber must provide access token in x-custom-auth-token header field.
         {
             SPDLOG_LOGGER_INFO(mLogger, "{} connected to backend", mPeer);
         }
+
+        // Max subscribers
+        auto maximumNumberOfSubscribers
+            = mOptions.getMaximumNumberOfSubscribers();
         if (mSubscriptionManager->getNumberOfSubscribers() >=
             maximumNumberOfSubscribers)
         {
@@ -379,6 +381,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
                                 "Max subscribers hit - try again later"};
             Finish(status);
         }
+
         // Subscribe
         try
         {
