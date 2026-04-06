@@ -1,16 +1,34 @@
+#include <cctype>
+#include <cstdint>
+#include <utility>
+#include <exception>
+#include <optional>
+#include <functional>
+#include <memory>
 #include <thread>
 #include <atomic>
 #include <cmath>
+#include <chrono>
+#include <string>
 #include <algorithm>
 #ifndef NDEBUG
 #include <cassert>
 #endif
 #include <boost/algorithm/string/trim.hpp>
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/support/status.h>
+#include <grpcpp/support/server_callback.h>
+#include <grpcpp/security/server_credentials.h>
+#include <grpcpp/support/status_code_enum.h>
 #include <spdlog/spdlog.h>
+#include <spdlog/logger.h>
+//NOLINTBEGIN(misc-include-cleaner)
 #include <spdlog/sinks/stdout_color_sinks.h>
+//NOLINTEND(misc-include-cleaner)
 #include "uDataPacketImportAPI/v1/packet.pb.h"
+#include "uDataPacketImportAPI/v1/data_type.pb.h"
 #include "uDataPacketImportAPI/v1/frontend.grpc.pb.h"
+#include "uDataPacketImportAPI/v1/publish_response.pb.h"
 #include "frontend.hpp"
 #include "frontendOptions.hpp"
 #include "grpcOptions.hpp"
@@ -57,7 +75,7 @@ public:
         mContext(context),
         mCallback(callback),
         mPublishResponse(publishResponse),
-        mLogger(logger),
+        mLogger(std::move(logger)),
         mNumberOfPublishers(numberOfPublishers),
         mKeepRunning(keepRunning)
     {
@@ -82,18 +100,17 @@ public:
             SPDLOG_LOGGER_WARN(mLogger,
                 "Frontend rejecting {} because max number of publishers hit",
                  mPeer);
-            grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
+            const grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
                                 "Max publishers hit - try again later"};
             Finish(status);
         }
-        if (isSecured &&
-            options.getGRPCOptions().getAccessToken() != std::nullopt)
+        auto accessToken = options.getGRPCOptions().getAccessToken();
+        if (isSecured && accessToken != std::nullopt)
         {
-            auto accessToken = *options.getGRPCOptions().getAccessToken();
-            if (!::validatePublisher(mContext, accessToken))
+            if (!::validatePublisher(mContext, *accessToken))
             {
                 SPDLOG_LOGGER_INFO(mLogger, "Frontend rejected {}", mPeer);
-                grpc::Status status{grpc::StatusCode::UNAUTHENTICATED,
+                const grpc::Status status{grpc::StatusCode::UNAUTHENTICATED,
 R"""(
 Publisher must provide access token in x-custom-auth-token header field.
 )"""};
@@ -208,7 +225,7 @@ Publisher must provide access token in x-custom-auth-token header field.
                 SPDLOG_LOGGER_WARN(mLogger,
                     "Frontend disconnecting {} because it sent too many consecutive invalid messages",
                     mPeer);
-                grpc::Status status{grpc::StatusCode::INVALID_ARGUMENT,
+                const grpc::Status status{grpc::StatusCode::INVALID_ARGUMENT,
                         "Too many conseuctive messages were invalid - double check API"};
                 Finish(status);
             }
@@ -219,7 +236,7 @@ Publisher must provide access token in x-custom-auth-token header field.
             }
             else
             {
-                grpc::Status status{grpc::StatusCode::UNAVAILABLE,
+                const grpc::Status status{grpc::StatusCode::UNAVAILABLE,
                                     "Server shutdown - try again later"};
                 Finish(status);
             }
@@ -323,11 +340,13 @@ public:
     ) :
         mOptions(options),
         mAddPacketCallback(callback),
-        mLogger(logger)
+        mLogger(std::move(logger))
     {
         if (mLogger == nullptr)
         {   
+            // NOLINTBEGIN(misc-include-cleaner)
             mLogger = spdlog::stdout_color_mt("ProxyFrontendConsole");
+            // NOLINTEND(misc-include-cleaner)
         }   
     }
 
@@ -371,8 +390,12 @@ public:
         }
         else
         {   
+#ifndef NDEBUG
+            assert(grpcOptions.getServerKey() != std::nullopt);
+            assert(grpcOptions.getServerCertificate() != std::nullopt);
+#endif
             SPDLOG_LOGGER_INFO(mLogger, "Initiating secured proxy frontend");
-            grpc::SslServerCredentialsOptions::PemKeyCertPair keyCertPair
+            const grpc::SslServerCredentialsOptions::PemKeyCertPair keyCertPair
             {
                 *grpcOptions.getServerKey(),        // Private key
                 *grpcOptions.getServerCertificate() // Public key (cert chain)

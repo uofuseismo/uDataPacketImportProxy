@@ -205,7 +205,8 @@ public:
                     mStopRequested = true;
                     break;
                 }
-                if (!checkFuturesOkay(std::chrono::milliseconds {5}))
+                constexpr std::chrono::milliseconds waitForFuture{5};
+                if (!checkFuturesOkay(waitForFuture))
                 {   
                     SPDLOG_LOGGER_CRITICAL(
                        mLogger,
@@ -215,11 +216,11 @@ public:
                 }   
                 printSummary();
                 std::unique_lock<std::mutex> lock(mStopMutex);
-                mStopCondition.wait_for(lock,
-                                        std::chrono::milliseconds {100},
+                constexpr std::chrono::milliseconds wait{100};
+                mStopCondition.wait_for(lock, wait,
                                         [this]
                                         {
-                                              return mStopRequested;
+                                            return mStopRequested;
                                         });
                 lock.unlock();
             }
@@ -249,9 +250,9 @@ public:
     }   
 
 //private:
-    mutable std::mutex mStopMutex;
     UDataPacketImportProxy::Options::ProgramOptions mOptions;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
+    mutable std::mutex mStopMutex;
     std::vector<std::future<void>> mFutures;
     std::unique_ptr<UDataPacketImportProxy::Proxy> mProxy{nullptr};
     std::condition_variable mStopCondition;

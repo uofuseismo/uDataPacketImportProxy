@@ -10,6 +10,9 @@ endif()
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
 option(BUILD_CONTAINER "Build container for deployment" OFF)
 option(BUILD_TESTS "Compile unit tests" ON) 
+option(WITH_CONAN "Compile using Conan2" OFF)
+option(USE_CLANG_TIDY "Build using clang-tidy" OFF)
+include(CheckCXXCompilerFlag)
 include(GenerateExportHeader)
 #include(FetchContent)
 
@@ -19,18 +22,34 @@ endif()
 if (NOT ${BUILD_SHARED_LIBS})
    set(Boost_USE_STATIC_LIBS ON)
 endif()
-find_package(absl CONFIG REQUIRED)
-find_package(utf8_range CONFIG REQUIRED)
+#find_package(absl CONFIG REQUIRED)
+#find_package(utf8_range CONFIG REQUIRED)
 find_package(Protobuf CONFIG REQUIRED)
-find_package(gRPC CONFIG REQUIRED)
-find_package(opentelemetry-cpp CONFIG REQUIRED COMPONENTS exporters_otlp_http)# exporter_otlp_grpc)
-#find_package(opentelemetry-cpp CONFIG REQUIRED)# COMPONENTS exporters_otlp_grpc otlp_http_log_record_exporter otlp_http_metric_exporter)
+find_package(gRPC REQUIRED)
+if (${WITH_CONAN})
+   find_package(opentelemetry-cpp CONFIG COMPONENTS exporter_otlp_grpc exporters_otlp_http REQUIRED)
+else()
+   find_package(opentelemetry-cpp CONFIG COMPONENTS exporters_otlp_http REQUIRED)
+endif()
 find_package(spdlog REQUIRED)
 find_package(Boost REQUIRED headers program_options REQUIRED)
 find_package(TBB COMPONENTS tbb REQUIRED)
 find_package(Threads REQUIRED)
 if (BUILD_TESTS)
    find_package(Catch2 3 REQUIRED)
+endif()
+
+if (${USE_CLANG_TIDY} AND PROJECT_IS_TOP_LEVEL)
+   message("Looking for clang-tidy")
+   find_program(CLANG_TIDY_EXECUTABLE NAMES "clang-tidy")
+   if (CLANG_TIDY_EXECUTABLE)
+      message("Using clang-tidy  ${CLANG_TIDY_EXECUTABLE}")
+      set(CMAKE_C_CLANG_TIDY   ${CLANG_TIDY_EXECUTABLE} -p ${CMAKE_BINARY_DIR})
+      set(CMAKE_CXX_CLANG_TIDY ${CLANG_TIDY_EXECUTABLE} -p ${CMAKE_BINARY_DIR})
+      set(CMAKE_EXPORT_COMPILE_COMMANDS ON) 
+   else()
+      message("clang-tidy not found")
+   endif()
 endif()
 
 set(PROTO_SRC
@@ -84,18 +103,29 @@ target_link_libraries(libuDataPacketImportProxy
                       PRIVATE gRPC::grpc
                               gRPC::grpc++
                               protobuf::libprotobuf
-                              opentelemetry-cpp::otlp_http_exporter_builder
-                              opentelemetry-cpp::otlp_http_metric_exporter_builder
-                              opentelemetry-cpp::otlp_http_log_record_exporter
-                              #opentelemetry-cpp::otlp_grpc_exporter_builder
-                              #opentelemetry-cpp::otlp_grpc_metric_exporter_builder
-                              #opentelemetry-cpp::otlp_grpc_log_record_exporter
-                              #opentelemetry-cpp::exporter_otlp_grpc_metric
-                              #opentelemetry-cpp::exporter_otlp_http_log
                               spdlog::spdlog_header_only
                               Boost::headers
                               Boost::program_options
                               Threads::Threads)
+if (${WITH_CONAN})
+   target_link_libraries(libuDataPacketImportProxy
+                         PUBLIC opentelemetry-cpp::opentelemetry-cpp
+                                opentelemetry-cpp::proto_grpc
+                                opentelemetry-cpp::exporter_otlp_grpc
+                                opentelemetry-cpp::exporter_otlp_grpc_client
+                                opentelemetry-cpp::exporter_otlp_grpc_metrics
+                                opentelemetry-cpp::exporter_otlp_http 
+                                opentelemetry-cpp::exporter_otlp_http_client
+                                opentelemetry-cpp::exporter_otlp_http_metric
+                                opentelemetry-cpp::exporter_otlp_http_log
+                                opentelemetry-cpp::metrics
+                                opentelemetry-cpp::common
+                                opentelemetry-cpp::api)
+else()
+   target_link_libraries(libuDataPacketImportProxy
+                         PUBLIC opentelemetry-cpp::otlp_http_metric_exporter_builder
+                                opentelemetry-cpp::otlp_http_log_record_exporter)
+endif()
 target_sources(libuDataPacketImportProxy
                #PUBLIC ${LIBRARY_SRC}
                PUBLIC FILE_SET
@@ -113,14 +143,19 @@ target_sources(libuDataPacketImportProxy
                )
 protobuf_generate(TARGET libuDataPacketImportProxy
                   LANGUAGE cpp 
+                  OUT_VAR PROTO_GENERATED_CXX_FILES
                  )
 protobuf_generate(TARGET libuDataPacketImportProxy
                   LANGUAGE grpc
-                  PLUGIN "protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
+                  PLUGIN "protoc-gen-grpc=\$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
                   PLUGIN_OPTIONS generate_mock_code=true
                   GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
+                  OUT_VAR PROTO_GENERATED_FILES
                  )   
-
+set_source_files_properties(${PROTO_GENERATED_FILES} ${PROTO_GENERATED_CXX_FILES}
+   PROPERTIES
+      SKIP_LINTING ON
+)
 
 
 add_executable(uDataPacketImportProxy src/main.cpp)
@@ -140,15 +175,27 @@ target_link_libraries(uDataPacketImportProxy
                          uDataPacketImportProxy::libuDataPacketImportProxy
                          gRPC::grpc
                          gRPC::grpc++
-                         opentelemetry-cpp::otlp_http_exporter
-                         #opentelemetry-cpp::otlp_http_log_record_exporter
-                         #opentelemetry-cpp::otlp_http_metric_exporter
-                         #opentelemetry-cpp::exporter_otlp_http_metric
-                         #opentelemetry-cpp::exporter_otlp_http_log
                          spdlog::spdlog_header_only
-                         Boost::headers
-                         Boost::program_options
-                         Threads::Threads)
+                         Boost::headers Boost::program_options Threads::Threads)
+if (${WITH_CONAN})
+#   target_link_libraries(uDataPacketImportProxy
+#                         PRIVATE opentelemetry-cpp::opentelemetry-cpp
+#                                 opentelemetry-cpp::proto_grpc
+#                                 opentelemetry-cpp::exporter_otlp_grpc
+#                                 opentelemetry-cpp::exporter_otlp_grpc_client
+#                                 opentelemetry-cpp::exporter_otlp_grpc_metrics
+#                                 opentelemetry-cpp::exporter_otlp_http 
+#                                 opentelemetry-cpp::exporter_otlp_http_client
+#                                 opentelemetry-cpp::exporter_otlp_http_metric
+#                                 opentelemetry-cpp::exporter_otlp_http_log
+#                                 opentelemetry-cpp::metrics
+#                                 opentelemetry-cpp::common
+#                                 opentelemetry-cpp::api)
+else()
+#   target_link_libraries(uDataPacketImportProxy
+#                         PRIVATE opentelemetry-cpp::otlp_http_log_record_exporter
+#                                 opentelemetry-cpp::otlp_http_metric_exporter)
+endif()
 
 ##########################################################################################
 #                                         Tests                                          #
@@ -170,7 +217,7 @@ if (PROJECT_IS_TOP_LEVEL AND ${BUILD_TESTS})
                             uDataPacketImportProxy::libuDataPacketImportProxy 
                             gRPC::grpc
                             gRPC::grpc++
-                            opentelemetry-cpp::otlp_http_exporter
+                            #opentelemetry-cpp::otlp_http_exporter
                             #opentelemetry-cpp::otlp_http_metric_exporter
                             #opentelemetry-cpp::exporter_otlp_http_metric
                             #opentelemetry-cpp::exporter_otlp_http_log

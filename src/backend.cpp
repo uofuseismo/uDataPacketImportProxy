@@ -1,8 +1,23 @@
+#include <cstdint>
+#include <cstddef>
+#include <atomic>
 #include <mutex>
+#include <thread>
+#include <chrono>
+#include <algorithm>
+#include <memory>
+#include <utility>
 #include <cmath>
 #include <queue>
-#include <map>
+#include <vector>
+#include <stdexcept>
+#include <string>
+#ifndef NDEBUG
+#include <cassert>
+#endif
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/security/server_credentials.h>
+#include <grpcpp/support/status_code_enum.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <tbb/concurrent_queue.h>
@@ -11,6 +26,7 @@
 #include "backendOptions.hpp"
 #include "grpcOptions.hpp"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
+#include "uDataPacketImportAPI/v1/stream_identifier.pb.h"
 #include "uDataPacketImportAPI/v1/backend.grpc.pb.h"
 //#include "metrics.hpp"
 import metrics;
@@ -332,7 +348,7 @@ public:
         mOptions(options),
         mContext(context),
         mContextAddress(reinterpret_cast<uintptr_t> (mContext)),
-        mSubscriptionManager(subscriptionManager),
+        mSubscriptionManager(std::move(subscriptionManager)),
         mLogger(logger),
         mKeepRunning(keepRunning)
     {
@@ -352,7 +368,7 @@ public:
             if (!::validateSubscriber(mContext, accessToken))
             {
                 SPDLOG_LOGGER_INFO(mLogger, "Backend rejected {}", mPeer);
-                grpc::Status status{grpc::StatusCode::UNAUTHENTICATED,
+                const grpc::Status status{grpc::StatusCode::UNAUTHENTICATED,
 R"""(
 Subscriber must provide access token in x-custom-auth-token header field.
 )"""};
@@ -377,8 +393,8 @@ Subscriber must provide access token in x-custom-auth-token header field.
             SPDLOG_LOGGER_WARN(mLogger,
                 "Backend rejecting {} because max number of subscribers hit",
                  mPeer);
-            grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
-                                "Max subscribers hit - try again later"};
+            const grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
+                                      "Max subscribers hit - try again later"};
             Finish(status);
         }
 
@@ -503,7 +519,7 @@ private:
                     auto packetsBuffer
                         = mSubscriptionManager->getNextPackets(
                              mContext,
-                             mMaximumWriteQueueSize);
+                             static_cast<int> (mMaximumWriteQueueSize));
                     for (auto &packet : packetsBuffer)
                     {
                         if (mPacketsQueue.size() > mMaximumWriteQueueSize)
@@ -585,7 +601,7 @@ public:
     explicit BackendImpl(const BackendOptions &options,
                          std::shared_ptr<spdlog::logger> logger) :
         mOptions(options),
-        mLogger(logger)
+        mLogger(std::move(logger))
     {
         if (mLogger == nullptr)
         {   
@@ -621,11 +637,14 @@ public:
         else
         {
             SPDLOG_LOGGER_INFO(mLogger, "Initiating secured proxy backend");
-            grpc::SslServerCredentialsOptions::PemKeyCertPair keyCertPair
+            // NOLINTBEGIN
+            const grpc::SslServerCredentialsOptions::PemKeyCertPair
+            keyCertPair
             {
                 *grpcOptions.getServerKey(),        // Private key
                 *grpcOptions.getServerCertificate() // Public key (cert chain)
             };
+            // NOLINTEND
             grpc::SslServerCredentialsOptions sslOptions; 
             sslOptions.pem_key_cert_pairs.emplace_back(keyCertPair);
             builder.AddListeningPort(address,
@@ -677,7 +696,7 @@ public:
 /// Constructor
 Backend::Backend(const BackendOptions &options,
                  std::shared_ptr<spdlog::logger> logger) :
-    pImpl(std::make_unique<BackendImpl> (options, logger))
+    pImpl(std::make_unique<BackendImpl> (options, std::move(logger)))
 {
 }
 
@@ -699,8 +718,8 @@ void Backend::stop()
 /// Enqueue packet
 int Backend::enqueuePacket(UDataPacketImportAPI::V1::Packet &&packet)
 {
-    auto copy = packet;
-    return pImpl->mSubscriptionManager->enqueuePacket(std::move(copy));;
+    //auto copy = packet;
+    return pImpl->mSubscriptionManager->enqueuePacket(packet); //std::move(packet));;
 }
 
 /// Number of subscribers
