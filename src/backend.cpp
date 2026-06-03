@@ -5,9 +5,11 @@
 #include <thread>
 #include <chrono>
 #include <algorithm>
+#include <exception>
 #include <memory>
 #include <utility>
 #include <cmath>
+#include <optional>
 #include <queue>
 #include <vector>
 #include <stdexcept>
@@ -124,7 +126,7 @@ class SubscriptionManager
 public:
     SubscriptionManager(const int queueCapacity,
                         std::shared_ptr<spdlog::logger> logger) :
-        mLogger(logger),
+        mLogger(std::move(logger)),
         mQueueCapacity(queueCapacity)
     {
         if (mLogger == nullptr)
@@ -142,7 +144,7 @@ public:
     [[nodiscard]] int getNumberOfSubscribers() const
     {
         //std::lock_guard<std::mutex> lock(mMutex);
-        return mSubscribers.size();
+        return static_cast<int> (mSubscribers.size());
     }
 
     // Unsubscribes all
@@ -151,7 +153,7 @@ public:
         mKeepRunning.store(false);
         auto nSubscribers = getNumberOfSubscribers();
         {
-        std::lock_guard<std::mutex> lock(mMutex);
+        const std::lock_guard<std::mutex> lock(mMutex);
         mSubscribers.clear();
         }
         if (nSubscribers > 0)
@@ -213,10 +215,10 @@ public:
     void unsubscribe(uintptr_t contextAddress, const std::string &peer)
     {
         if (!mKeepRunning.load()){return;}
-        std::string errorMessage;
+        const std::string errorMessage;
         bool exists{false};
         {
-        std::lock_guard<std::mutex> lock(mMutex);
+        const std::lock_guard<std::mutex> lock(mMutex);
         exists = mSubscribers.unsafe_erase(contextAddress) == 1 ? true : false;
         }
 /*
@@ -349,7 +351,7 @@ public:
         mContext(context),
         mContextAddress(reinterpret_cast<uintptr_t> (mContext)),
         mSubscriptionManager(std::move(subscriptionManager)),
-        mLogger(logger),
+        mLogger(std::move(logger)),
         mKeepRunning(keepRunning)
     {
         mPeer = mContext->peer();

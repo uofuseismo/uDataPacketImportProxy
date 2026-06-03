@@ -215,7 +215,7 @@ export void observePublisherUtilization(
         <
             opentelemetry::nostd::shared_ptr
             <
-                opentelemetry::metrics::ObserverResultT<int64_t>
+                opentelemetry::metrics::ObserverResultT<double>
             >
         > (observerResult))
     {
@@ -223,7 +223,7 @@ export void observePublisherUtilization(
         <
             opentelemetry::nostd::shared_ptr
             <
-               opentelemetry::metrics::ObserverResultT<int64_t>
+               opentelemetry::metrics::ObserverResultT<double>
             >
         > (observerResult);
         try
@@ -247,7 +247,7 @@ export void observeSubscriberUtilization(
         <
             opentelemetry::nostd::shared_ptr
             <
-                opentelemetry::metrics::ObserverResultT<int64_t>
+                opentelemetry::metrics::ObserverResultT<double>
             >
         > (observerResult))
     {
@@ -255,7 +255,7 @@ export void observeSubscriberUtilization(
         <
             opentelemetry::nostd::shared_ptr
             <
-               opentelemetry::metrics::ObserverResultT<int64_t>
+               opentelemetry::metrics::ObserverResultT<double>
             >
         > (observerResult);
         try

@@ -345,7 +345,10 @@ public:
         if (mLogger == nullptr)
         {   
             // NOLINTBEGIN(misc-include-cleaner)
-            mLogger = spdlog::stdout_color_mt("ProxyFrontendConsole");
+            auto classId
+                = std::to_string (reinterpret_cast<std::uintptr_t> (this));
+            mLogger = spdlog::stdout_color_mt("ProxyFrontendConsole-"
+                                            + classId);
             // NOLINTEND(misc-include-cleaner)
         }   
     }
