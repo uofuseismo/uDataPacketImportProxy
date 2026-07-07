@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(uDataPacketImportProxy VERSION 0.0.6 LANGUAGES CXX)
+project(uDataPacketImportProxy VERSION 0.0.7 LANGUAGES CXX)
 enable_testing()
 
 find_program(CCACHE_PROGRAM ccache)
