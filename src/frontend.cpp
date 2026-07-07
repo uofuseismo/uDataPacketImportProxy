@@ -103,6 +103,7 @@ public:
             const grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
                                 "Max publishers hit - try again later"};
             Finish(status);
+            return;
         }
         auto accessToken = options.getGRPCOptions().getAccessToken();
         if (isSecured && accessToken != std::nullopt)
@@ -115,6 +116,7 @@ R"""(
 Publisher must provide access token in x-custom-auth-token header field.
 )"""};
                 Finish(status);
+                return;
             }
             else
             {
@@ -144,6 +146,7 @@ Publisher must provide access token in x-custom-auth-token header field.
         {
             SPDLOG_LOGGER_WARN(mLogger, "Immediately closing RPC publish");
             Finish(grpc::Status::OK);
+            return;
         }
     }
 
@@ -228,6 +231,7 @@ Publisher must provide access token in x-custom-auth-token header field.
                 const grpc::Status status{grpc::StatusCode::INVALID_ARGUMENT,
                         "Too many conseuctive messages were invalid - double check API"};
                 Finish(status);
+                return;
             }
             // Keep running?
             if (mKeepRunning->load())
