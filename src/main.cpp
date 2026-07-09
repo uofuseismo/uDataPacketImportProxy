@@ -4,13 +4,14 @@ import programOptions;
 import metrics;
 #include <iostream>
 #include <atomic>
-#include <mutex>
 #include <csignal>
 #include <cstdlib>
 #ifndef NDEBUG
 #include <cassert>
 #endif
 #include <filesystem>
+#include <mutex>
+#include <utility>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <absl/log/initialize.h>
@@ -21,6 +22,7 @@ import metrics;
 
 namespace
 {
+volatile std::sig_atomic_t mSignalStatus;
 std::atomic<bool> mInterrupted{false};
 
 opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
@@ -234,6 +236,7 @@ public:
     }
 
     /// Handles sigterm and sigint
+    /*
     static void signalHandler(const int )
     {   
         mInterrupted = true;
@@ -248,6 +251,18 @@ public:
         sigaction(SIGINT,  &action, NULL);
         sigaction(SIGTERM, &action, NULL);
     }   
+    */
+    void catchSignals()
+    {   
+        std::signal(SIGINT,  ServerImpl::signalHandler);
+        std::signal(SIGTERM, ServerImpl::signalHandler);
+    }   
+
+    static void signalHandler(const int signal)
+    {   
+        mSignalStatus = signal;
+        mInterrupted.store(true);
+    } 
 
 //private:
     UDataPacketImportProxy::Options::ProgramOptions mOptions;

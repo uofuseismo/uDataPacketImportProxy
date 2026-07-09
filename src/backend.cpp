@@ -22,7 +22,9 @@
 #include <grpcpp/grpcpp.h>
 #include <grpcpp/alarm.h>
 #include <grpcpp/security/server_credentials.h>
+#include <grpcpp/support/status.h>
 #include <grpcpp/support/status_code_enum.h>
+#include <grpcpp/support/time.h> //NOLINT
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <tbb/concurrent_queue.h>
@@ -415,8 +417,9 @@ Subscriber must provide access token in x-custom-auth-token header field.
                                 "Failed to subscribe"));
             return;
         }
+        SPDLOG_LOGGER_DEBUG(mLogger, "Subscribe RPC for {} is starting", mPeer);
         // Start
-        nextWrite();
+        pump();
     }
 
 #ifndef NDEBUG
@@ -434,17 +437,16 @@ Subscriber must provide access token in x-custom-auth-token header field.
             {
                 if (mContext->IsCancelled())
                 {
-                    return Finish(grpc::Status::CANCELLED);
+                    return finishUp(grpc::Status::CANCELLED);
                 }
             }
-            return Finish(grpc::Status(grpc::StatusCode::UNKNOWN,
-                                       "Unexpected failure"));
+            return finishUp(grpc::Status(grpc::StatusCode::UNKNOWN,
+                                         "Unexpected failure"));
         }
         // Packet is flushed; can now safely purge the element to write
-        mWriteInProgress = false;
         mPacketsQueue.pop();
         // Start next write
-        nextWrite();
+        pump();
     }
 
     // This needs to perform quickly.  I should do blocking work but
@@ -475,96 +477,93 @@ Subscriber must provide access token in x-custom-auth-token header field.
         SPDLOG_LOGGER_INFO(mLogger,
                            "Subscribe RPC cancelled for {}",
                            mPeer);
-        if (mContext && mSubscribed.exchange(false))
-        {
-            mSubscriptionManager->unsubscribe(mContextAddress, mPeer);
-            //mSubscribed.store(false);
-        }    
-    }   
+        // Nothing to wake here: if a write is in flight it completes with
+        // ok=false via OnWriteDone; if the pump is idle the armed alarm
+        // fires at its deadline (ok=true, at most mMaximumPollInterval away).
+        // Either way the pump sees IsCancelled() and finishes up.
+    }
 
 private:
-    void nextWrite()
+    // The write pump.  Exactly one continuation is outstanding at any
+    // instant - an in-flight StartWrite (resumes in OnWriteDone) or an
+    // armed alarm (resumes in the alarm callback) - so the pump is
+    // logically single threaded and holds no thread while idle.  Finish
+    // is only ever called from the pump, so when OnDone runs nothing can
+    // still be pending and delete this is safe.
+    void pump()
     {
-        // Keep running either until the server or client quits
-        while (mKeepRunning->load())
+        // Server shutting down or client gone?
+        if (!mKeepRunning->load() || mContext->IsCancelled())
         {
-            // Cancel means we leave now
-            if (mContext->IsCancelled()){break;}
-
-            // Get any remaining packets on the queue on the wire
-            if (!mPacketsQueue.empty() && !mWriteInProgress)
-            {
-                const auto &packet = mPacketsQueue.front();
-                mWriteInProgress = true;
-                //std::cout << mContextAddress << " " << mMetrics.getSentPacketsCount() << " " << mMetrics.getReceivedPacketsCount() << std::endl;
-                mMetrics.incrementSentPacketsCounter();
-                StartWrite(&packet);
-                return;
-            }
-
-            // I've cleared the queue and/or I have packets in flight.
-            // Try to get more packets to write while I `wait.'
-            if (mPacketsQueue.empty())
-            {
-                try
-                {
-                    auto packetsBuffer
-                        = mSubscriptionManager->getNextPackets(
-                             mContext,
-                             static_cast<int> (mMaximumWriteQueueSize));
-                    for (auto &packet : packetsBuffer)
-                    {
-                        if (mPacketsQueue.size() > mMaximumWriteQueueSize)
-                        {
-                            SPDLOG_LOGGER_WARN(mLogger,
-                               "RPC writer queue exceeded - popping element");
-                            mPacketsQueue.pop();
-                        }
-                        mPacketsQueue.push(std::move(packet));
-                    }
-                }
-                catch (const std::exception &e)
-                {
-                    SPDLOG_LOGGER_WARN(mLogger,
-                                       "Failed to get next packets because {}",
-                                       std::string {e.what()});
-                }
-            }
-            // No new packets were acquired and I'm not waiting for a write.
-            // Give me stream manager a break.
-            if (mPacketsQueue.empty() && !mWriteInProgress)
-            {
-                std::this_thread::sleep_for(mTimeOut);
-            }
-        } // Loop on server still running
-        if (mContext)
-        {
-            // The context is still valid so try to remove it from the
-            // subscriptions.  This can be the case whether the server is
-            // shutting down or the client bailed.
-            mSubscriptionManager->unsubscribe(mContextAddress, mPeer);
-            mSubscribed.exchange(false);
             if (mContext->IsCancelled())
             {
                 SPDLOG_LOGGER_INFO(mLogger,
                  "Terminating acquisition for {} because of client side cancel",
                     mPeer);
-                Finish(grpc::Status::CANCELLED);
-            }
-            else
-            {
-                SPDLOG_LOGGER_INFO(mLogger,
+                return finishUp(grpc::Status::CANCELLED);
+            }   
+            SPDLOG_LOGGER_INFO(mLogger,
                  "Terminating acquisition for {} because of server side cancel",
-                    mPeer);
-                Finish(grpc::Status::OK);
+                mPeer);
+            return finishUp(grpc::Status::OK);
+        }
+        // Try to get more packets to write
+        if (mPacketsQueue.empty())
+        {
+            try
+            {
+                auto packetsBuffer
+                    = mSubscriptionManager->getNextPackets(
+                        mContext,
+                        static_cast<int> (mMaximumWriteQueueSize));
+                for (auto &packet : packetsBuffer)
+                {
+                    if (mPacketsQueue.size() > mMaximumWriteQueueSize)
+                    {
+                        SPDLOG_LOGGER_WARN(mLogger,
+                           "RPC writer queue exceeded - popping element");
+                        mPacketsQueue.pop();
+                    }
+                    mPacketsQueue.push(std::move(packet));
+                }
+            }
+            catch (const std::exception &e)
+            {
+                SPDLOG_LOGGER_WARN(mLogger,
+                                   "Failed to get next packets because {}",
+                                   std::string {e.what()});
             }
         }
-        else
+
+        // Data to send: put the front packet on the wire.  The pump
+        // resumes in OnWriteDone.
+        if (!mPacketsQueue.empty())
         {
-            SPDLOG_LOGGER_WARN(mLogger,
-                               "The context for {} has disappeared", mPeer);
+            mCurrentPollInterval = mPollInterval; // Data is flowing again
+            mMetrics.incrementSentPacketsCounter();
+            StartWrite(&mPacketsQueue.front());
+            return;
         }
+
+        // Idle: hand the thread back; the alarm resumes the pump at the
+        // deadline (ok=true).  While the stream stays quiet, back off 
+        // towards maximum, which bounds both cancel detection and shutdown lag.
+        const auto interval
+            = std::min(mCurrentPollInterval, mMaximumPollInterval);
+        mCurrentPollInterval = std::min(interval*2, mMaximumPollInterval);
+        mAlarm.Set(std::chrono::system_clock::now() + interval,
+                   [this](bool){pump();});
     }
+
+    void finishUp(const grpc::Status &status)
+    {
+        if (mSubscribed.exchange(false))
+        {
+            mSubscriptionManager->unsubscribe(mContextAddress, mPeer);
+        }
+        Finish(status);
+    }
+    
     BackendOptions mOptions;
     grpc::CallbackServerContext *mContext{nullptr};
     uintptr_t mContextAddress;
@@ -576,10 +575,12 @@ private:
     };
     std::atomic<bool> *mKeepRunning{nullptr};
     std::queue<UDataPacketImportAPI::V1::Packet> mPacketsQueue;
+    grpc::Alarm mAlarm;
     std::string mPeer;
-    std::chrono::milliseconds mTimeOut{20};
+    std::chrono::milliseconds mPollInterval{10};
+    std::chrono::milliseconds mCurrentPollInterval{mPollInterval};
+    std::chrono::milliseconds mMaximumPollInterval{250};
     size_t mMaximumWriteQueueSize{128};
-    bool mWriteInProgress{false};
     std::atomic<bool> mSubscribed{false};
 };
 
@@ -671,8 +672,26 @@ public:
         stop();
         std::this_thread::sleep_for(std::chrono::milliseconds {15});
         if (mServer)
-        {   
-            mServer->Shutdown();
+        {
+            SPDLOG_LOGGER_INFO(mLogger, "Shutting down backend service");
+            // tv_nsec is an int32 and must stay below 1e9, so split the
+            // deadline into whole seconds and remainder nanoseconds
+            // TODO make this a parameter.
+            //const auto shutdownDeadline = mOptions.getShutdownDeadline();
+            constexpr std::chrono::seconds shutdownDeadline{1};
+            const auto timeOutSeconds
+                = std::chrono::duration_cast<std::chrono::seconds>
+                  (shutdownDeadline);
+            const auto timeOutNanoSeconds
+                = std::chrono::duration_cast<std::chrono::nanoseconds>
+                  (shutdownDeadline - timeOutSeconds);
+            const gpr_timespec deadline // NOLINT
+            {
+                timeOutSeconds.count(),
+                static_cast<int32_t> (timeOutNanoSeconds.count()),
+                GPR_TIMESPAN // NOLINT
+            };
+            mServer->Shutdown(deadline);
         }   
     }   
 
