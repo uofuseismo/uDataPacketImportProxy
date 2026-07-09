@@ -6,11 +6,14 @@ import metrics;
 #include <atomic>
 #include <csignal>
 #include <cstdlib>
+#include <cstdint>
 #ifndef NDEBUG
 #include <cassert>
 #endif
 #include <filesystem>
+#include <memory>
 #include <mutex>
+#include <thread>
 #include <utility>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -19,6 +22,7 @@ import metrics;
 #include <opentelemetry/metrics/provider.h>
 #include "proxy.hpp"
 #include "proxyOptions.hpp"
+//#include "uDataPacketImportProxy/version.hpp"
 
 namespace
 {
@@ -39,7 +43,7 @@ class ServerImpl
 public:
     explicit ServerImpl(const UDataPacketImportProxy::Options::ProgramOptions &options,
                         std::shared_ptr<spdlog::logger> logger) :
-        mLogger(logger)
+        mLogger(std::move(logger))
     {
 #ifndef NDEBUG
         assert(mLogger != nullptr);
