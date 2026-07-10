@@ -222,6 +222,7 @@ if (PROJECT_IS_TOP_LEVEL AND ${BUILD_TESTS})
                             #opentelemetry-cpp::otlp_http_metric_exporter
                             #opentelemetry-cpp::exporter_otlp_http_metric
                             #opentelemetry-cpp::exporter_otlp_http_log
+                            spdlog::spdlog_header_only
                             Threads::Threads
                             Catch2::Catch2 Catch2::Catch2WithMain)
    target_include_directories(unitTests
