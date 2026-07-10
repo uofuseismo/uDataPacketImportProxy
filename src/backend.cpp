@@ -26,6 +26,7 @@
 #include <grpcpp/support/status_code_enum.h>
 #include <grpcpp/support/time.h> //NOLINT
 #include <spdlog/spdlog.h>
+#include <spdlog/logger.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <tbb/concurrent_queue.h>
 #include "backend.hpp"
@@ -147,7 +148,7 @@ public:
     // Number of subscribers
     [[nodiscard]] int getNumberOfSubscribers() const
     {
-        std::lock_guard<std::mutex> lock(mMutex);
+        const std::lock_guard<std::mutex> lock(mMutex);
         return static_cast<int> (mSubscribers.size());
     }
 
@@ -257,7 +258,7 @@ public:
             }
             catch (const std::exception &e)
             {
-                errorMessages = errorMessages + std::string {e.what()};
+                errorMessages.append(std::string {e.what()});
                 //SPDLOG_LOGGER_ERROR(mLogger,
                 //     "Subscription manager failed to enqueue packet because {}",
                 //     std::string {e.what()}); 
@@ -284,7 +285,7 @@ public:
         bool exists{false};
         auto contextMemoryAddress = reinterpret_cast<uintptr_t> (context);
         {   
-        std::lock_guard<std::mutex> lock(mMutex);
+        const std::lock_guard<std::mutex> lock(mMutex);
         auto idx = mSubscribers.find(contextMemoryAddress);
         if (idx != mSubscribers.end())
         {

@@ -1,5 +1,5 @@
 import getNow;
-import logger;
+//import logger;
 import programOptions;
 import metrics;
 #include <iostream>
@@ -16,12 +16,14 @@ import metrics;
 #include <thread>
 #include <utility>
 #include <spdlog/spdlog.h>
+#include <spdlog/logger.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <absl/log/initialize.h>
 #include <opentelemetry/metrics/meter_provider.h>
 #include <opentelemetry/metrics/provider.h>
 #include "proxy.hpp"
 #include "proxyOptions.hpp"
+#include "logger.hpp"
 //#include "uDataPacketImportProxy/version.hpp"
 
 namespace
@@ -322,7 +324,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
     
-    if (getenv("OTEL_SERVICE_NAME") == nullptr)
+    if (std::getenv("OTEL_SERVICE_NAME") == nullptr)
     {
         constexpr int overwrite{1};
         setenv("OTEL_SERVICE_NAME",

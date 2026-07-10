@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(uDataPacketImportProxy VERSION 0.0.8 LANGUAGES CXX)
+project(uDataPacketImportProxy VERSION 0.0.9 LANGUAGES CXX)
 enable_testing()
 
 find_program(CCACHE_PROGRAM ccache)
@@ -79,7 +79,7 @@ set(HEADER_FILES
     src/frontendOptions.hpp
     src/proxyOptions.hpp)
 set(MODULE_FILES
-    src/modules/logger.cppm
+    #src/modules/logger.cppm
     src/modules/programOptions.cppm
     src/modules/metrics.cppm
     src/modules/otelSpdlogSink.cppm
@@ -178,23 +178,24 @@ target_link_libraries(uDataPacketImportProxy
                          spdlog::spdlog_header_only
                          Boost::headers Boost::program_options Threads::Threads)
 if (${WITH_CONAN})
-#   target_link_libraries(uDataPacketImportProxy
-#                         PRIVATE opentelemetry-cpp::opentelemetry-cpp
-#                                 opentelemetry-cpp::proto_grpc
-#                                 opentelemetry-cpp::exporter_otlp_grpc
-#                                 opentelemetry-cpp::exporter_otlp_grpc_client
-#                                 opentelemetry-cpp::exporter_otlp_grpc_metrics
-#                                 opentelemetry-cpp::exporter_otlp_http 
-#                                 opentelemetry-cpp::exporter_otlp_http_client
-#                                 opentelemetry-cpp::exporter_otlp_http_metric
-#                                 opentelemetry-cpp::exporter_otlp_http_log
-#                                 opentelemetry-cpp::metrics
-#                                 opentelemetry-cpp::common
-#                                 opentelemetry-cpp::api)
+    target_link_libraries(uDataPacketImportProxy
+                          PRIVATE opentelemetry-cpp::opentelemetry-cpp
+                                  opentelemetry-cpp::proto_grpc
+                                  opentelemetry-cpp::exporter_otlp_grpc
+                                  opentelemetry-cpp::exporter_otlp_grpc_client
+                                  opentelemetry-cpp::exporter_otlp_grpc_metrics
+                                  opentelemetry-cpp::exporter_otlp_http 
+                                  opentelemetry-cpp::exporter_otlp_http_client
+                                  opentelemetry-cpp::exporter_otlp_http_metric
+                                  opentelemetry-cpp::exporter_otlp_http_log
+                                  opentelemetry-cpp::metrics
+                                  opentelemetry-cpp::common
+                                  opentelemetry-cpp::api)
+    target_compile_definitions(uDataPacketImportProxy PRIVATE WITH_OTLP_GRPC)
 else()
-#   target_link_libraries(uDataPacketImportProxy
-#                         PRIVATE opentelemetry-cpp::otlp_http_log_record_exporter
-#                                 opentelemetry-cpp::otlp_http_metric_exporter)
+    target_link_libraries(uDataPacketImportProxy
+                          PRIVATE opentelemetry-cpp::otlp_http_log_record_exporter
+                                  opentelemetry-cpp::otlp_http_metric_exporter)
 endif()
 
 ##########################################################################################

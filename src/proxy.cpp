@@ -1,10 +1,18 @@
 #include <atomic>
+#include <chrono>
+#include <exception>
+#include <functional>
+#include <stdexcept>
+#include <memory>
+#include <string>
 #include <thread>
+#include <utility>
 #ifndef NDEBUG
 #include <cassert>
 #endif
 #include <tbb/concurrent_queue.h>
 #include <spdlog/spdlog.h>
+#include <spdlog/logger.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include "proxy.hpp"
 #include "proxyOptions.hpp"
@@ -26,7 +34,7 @@ public:
         std::shared_ptr<spdlog::logger> logger
     ) :
         mOptions(options),
-        mLogger(logger)
+        mLogger(std::move(logger))
     {   
         if (mLogger == nullptr)
         {

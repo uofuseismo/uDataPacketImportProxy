@@ -2,6 +2,9 @@ module;
 
 #include <iostream>
 #include <atomic>
+#include <cstdint>
+#include <exception>
+#include <mutex>
 #include <string>
 #include <opentelemetry/nostd/shared_ptr.h>
 #include <opentelemetry/metrics/meter.h>

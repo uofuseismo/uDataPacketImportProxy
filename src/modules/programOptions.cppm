@@ -6,16 +6,73 @@ module;
 #include <fstream>
 #include <sstream>
 #include <filesystem>
-#include <boost/program_options.hpp>
+#include <boost/program_options/value_semantic.hpp>
+#include <boost/program_options/options_description.hpp>
+#include <boost/program_options/parsers.hpp>
+#include <boost/program_options/variables_map.hpp>
 #include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/ptree_fwd.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 #include "proxyOptions.hpp"
 #include "frontendOptions.hpp"
 #include "backendOptions.hpp"
 #include "grpcOptions.hpp"
 #include "duplicatePacketDetector.hpp"
+#include "otelOptions.hpp"
 
 export module programOptions;
+
+namespace
+{
+
+[[nodiscard]]
+std::pair<std::chrono::milliseconds, std::chrono::milliseconds>
+getOTelMetricsIntervalAndTimeOut(
+    boost::property_tree::ptree &propertyTree,
+    const std::string &section,
+    const std::chrono::milliseconds &defaultExportInterval,
+    const std::chrono::milliseconds &defaultExportTimeOut)
+{
+    int64_t exportInterval = defaultExportInterval.count();
+    exportInterval
+        = propertyTree.get<int64_t> ( 
+            section + ".exportIntervalInMilliSeconds",
+            exportInterval);
+    if (exportInterval <= 0)
+    {
+        throw std::runtime_error("Export interval must be positive");
+    }     
+    int64_t exportTimeOut = defaultExportTimeOut.count();
+    exportTimeOut
+        = propertyTree.get<int64_t> (
+            section + ".exportTimeOutInMilliSeconds",
+            exportTimeOut);
+    if (exportTimeOut <= 0)
+    {
+        throw std::invalid_argument("Export time out must be positive");
+    }
+    return std::pair {std::chrono::milliseconds {exportInterval},
+                      std::chrono::milliseconds {exportTimeOut}};
+}
+
+[[nodiscard]]
+std::string getOTelCollectorURL(boost::property_tree::ptree &propertyTree,
+                                const std::string &section)
+{    
+    std::string result;
+    const std::string otelCollectorHost
+        = propertyTree.get<std::string> (section + ".host", "");
+    const uint16_t otelCollectorPort
+        = propertyTree.get<uint16_t> (section + ".port", 4218);
+    if (!otelCollectorHost.empty())
+    {               
+        result = otelCollectorHost + ":"
+               + std::to_string(otelCollectorPort);
+    }           
+    return result;
+}       
+
+}
 
 namespace UDataPacketImportProxy::Options
 {
@@ -39,14 +96,20 @@ export struct OTelHTTPLogOptions
 
 export struct ProgramOptions
 {
+    UDataPacketImportProxy::OTelOptions::HTTPMetrics otelHTTPMetricsOptions;
+    UDataPacketImportProxy::OTelOptions::HTTPLog otelHTTPLogOptions;
+    UDataPacketImportProxy::OTelOptions::GRPCMetrics otelGRPCMetricsOptions;
+    UDataPacketImportProxy::OTelOptions::GRPCLog otelGRPCLogOptions;
     std::string applicationName{APPLICATION_NAME};
-    OTelHTTPMetricsOptions otelHTTPMetricsOptions;
-    OTelHTTPLogOptions otelHTTPLogOptions;
+    //OTelHTTPMetricsOptions otelHTTPMetricsOptions;
+    //OTelHTTPLogOptions otelHTTPLogOptions;
     UDataPacketImportProxy::ProxyOptions proxyOptions;
     std::chrono::seconds printSummaryInterval{std::chrono::minutes {15}};
     int verbosity{3};
     bool exportLogs{false};
+    bool exportLogsWithHTTP{true};
     bool exportMetrics{false};
+    bool exportMetricsWithHTTP{true};
 };
 
 export
@@ -344,54 +407,132 @@ export ProgramOptions
     options.exportMetrics = false;
     options.exportLogs = false;
 
-    // Metrics
-    OTelHTTPMetricsOptions metricsOptions;
-    metricsOptions.url
-         = getOTelCollectorURL(propertyTree, "OTelHTTPMetricsOptions");
-    metricsOptions.suffix
-         = propertyTree.get<std::string> ("OTelHTTPMetricsOptions.suffix",
-                                          "/v1/metrics");
-    if (!metricsOptions.url.empty())
+    // Logging
+    options.exportLogs = false;
+    if (propertyTree.get_optional<std::string> ("OTelHTTPLogOptions"))
     {
-        if (!metricsOptions.suffix.empty())
+        UDataPacketImportProxy::OTelOptions::HTTPLog logOptions;
+        logOptions.url
+            = ::getOTelCollectorURL(propertyTree, "OTelHTTPLogOptions");
+        logOptions.suffix
+            = propertyTree.get<std::string>
+              ("OTelHTTPLogOptions.suffix", "/v1/logs");
+        if (!logOptions.url.empty())
         {
-            if (!metricsOptions.url.ends_with("/") &&
-                !metricsOptions.suffix.starts_with("/"))
+            if (!logOptions.suffix.empty())
             {
-                metricsOptions.suffix = "/" + metricsOptions.suffix;
-            }
-         }
-    }
-    if (!metricsOptions.url.empty())
-    {
-        options.exportMetrics = true;
-        options.otelHTTPMetricsOptions = metricsOptions;
-    }
-
-
-    OTelHTTPLogOptions logOptions;
-    logOptions.url
-         = getOTelCollectorURL(propertyTree, "OTelHTTPLogOptions");
-    logOptions.suffix 
-         = propertyTree.get<std::string>
-           ("OTelHTTPLogOptions.suffix", "/v1/logs");
-    if (!logOptions.url.empty())
-    {
-        if (!logOptions.suffix.empty())
-        {
-            if (!logOptions.url.ends_with("/") &&
-                !logOptions.suffix.starts_with("/"))
-            {
-                logOptions.suffix = "/" + logOptions.suffix;
+                if (!logOptions.url.ends_with("/") &&
+                    !logOptions.suffix.starts_with("/"))
+                {
+                    logOptions.suffix = "/" + logOptions.suffix;
+                }
             }
         }
+        if (!logOptions.url.empty())
+        {
+            options.exportLogs = true;
+            options.exportLogsWithHTTP = true;
+            options.otelHTTPLogOptions = logOptions;
+        }
     }
-    if (!logOptions.url.empty())
+    else if (propertyTree.get_optional<std::string> ("OTelGRPCLogOptions"))
     {
-        options.exportLogs = true;
-        options.otelHTTPLogOptions = logOptions;
+#ifndef WITH_OTLP_GRPC
+        throw std::runtime_error(
+            "Recompile with Conan to use gRPC logs exporter option");
+#endif
+        UDataPacketImportProxy::OTelOptions::GRPCLog logOptions;
+        logOptions.url
+            = ::getOTelCollectorURL(propertyTree, "OTelGRPCLogOptions");
+        auto certificatePath
+            = propertyTree.get_optional<std::string>
+              ("OTelGRPCLogOptions.certificate");
+        if (certificatePath)
+        {
+            if (std::filesystem::exists(*certificatePath))
+            {
+                logOptions.certificatePath = *certificatePath;
+            }
+        }
+        if (!logOptions.url.empty())
+        {
+            options.exportLogs = true;
+            options.exportLogsWithHTTP = false;
+            options.otelGRPCLogOptions = logOptions;
+        }
     }
-    
+
+    // Metrics
+    options.exportMetrics = false;
+    if (propertyTree.get_optional<std::string> ("OTelHTTPMetricsOptions"))
+    {
+        UDataPacketImportProxy::OTelOptions::HTTPMetrics metricsOptions;
+        metricsOptions.url
+            = ::getOTelCollectorURL(propertyTree, "OTelHTTPMetricsOptions");
+        metricsOptions.suffix
+            = propertyTree.get<std::string> ("OTelHTTPMetricsOptions.suffix",
+                                             "/v1/metrics");
+        if (!metricsOptions.url.empty())
+        {
+            if (!metricsOptions.suffix.empty())
+            {   
+                if (!metricsOptions.url.ends_with("/") &&
+                    !metricsOptions.suffix.starts_with("/"))
+                {   
+                    metricsOptions.suffix = "/" + metricsOptions.suffix;
+                }   
+            }
+        }
+        if (!metricsOptions.url.empty())
+        {
+            auto [exportInterval, exportTimeOut]
+                = ::getOTelMetricsIntervalAndTimeOut(
+                      propertyTree,
+                      "OTelHTTPMetricsOptions",
+                      metricsOptions.exportInterval,
+                      metricsOptions.exportTimeOut);
+            metricsOptions.exportInterval = exportInterval;
+            metricsOptions.exportTimeOut = exportTimeOut;
+            options.otelHTTPMetricsOptions = metricsOptions;
+            options.exportMetrics = true;
+            options.exportMetricsWithHTTP = true;
+        }   
+    }   
+    else if (propertyTree.get_optional<std::string> ("OTelGRPCMetricsOptions"))
+    {   
+#ifndef WITH_OTLP_GRPC
+        throw std::runtime_error(
+            "Recompile with Conan to use gRPC metrics exporter option");
+#endif
+        UDataPacketImportProxy::OTelOptions::GRPCMetrics metricsOptions;
+        metricsOptions.url
+            = getOTelCollectorURL(propertyTree, "OTelGRPCMetricsOptions");
+        auto [exportInterval, exportTimeOut]
+            = ::getOTelMetricsIntervalAndTimeOut(
+                  propertyTree,
+                  "OTelGRPCMetricsOptions",
+                  metricsOptions.exportInterval,
+                  metricsOptions.exportTimeOut);
+        metricsOptions.exportInterval = exportInterval;
+        metricsOptions.exportTimeOut = exportTimeOut;
+        auto certificatePath
+            = propertyTree.get_optional<std::string>
+              ("OTelGRPCMetricsOptions.certificate");
+        if (certificatePath)
+        {
+            if (std::filesystem::exists(*certificatePath))
+            {
+                metricsOptions.certificatePath = *certificatePath;
+            }
+        }
+        if (!metricsOptions.url.empty())
+        {
+            options.otelGRPCMetricsOptions = metricsOptions;
+            options.exportMetrics = true;
+            options.exportMetricsWithHTTP = false;
+        }
+    }
+
     options.proxyOptions = getProxyOptions(propertyTree); 
     return options;
 }
