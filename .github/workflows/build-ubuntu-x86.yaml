@@ -1,0 +1,145 @@
+name: uDataPacketImportProxy Ubuntu26 Application
+run-name: Pipeline for branch ${{ github.ref_name }}
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PROJECT_NAME: uDataPacketImportProxy
+  CONTAINER_NAME: udatapacketimportproxy
+  QUAY_DIRECTORY: udatapacketimportproxy
+  BUILD_TYPE: Release
+  CXX: /usr/bin/clang++
+  CC: /usr/bin/clang
+
+jobs:
+  build:
+    runs-on: ${{ matrix.distro }}
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [ubuntu-26.04]
+        arch: [x86]
+        BUILD_TARGET: [Release]
+    name: Build for ${{ matrix.distro }} ${{ matrix.arch }}
+
+    steps:
+      - uses: actions/checkout@v6
+      # Trick next step - python checkout wants a requirements.txt file
+      - run: touch requirements.txt
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+      - run: pip install conan
+
+      - name: Conan cache setup
+        uses: actions/cache@v5
+        id: cache-conan
+        env:
+          cache-name: cache-conan-modules
+        with:
+          path: ~/.conan2
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('./conanfile.py') }}
+
+      # Cache hit
+      - if: ${{ steps.cache-conan.outputs.cache-hit == 'true' }}
+        name: Cache hit - list the existing Conan modules
+        continue-on-error: true
+        run: |
+          ls ~/.conan2/
+          ls ~/.conan2/p
+
+      - name: Create default profile with Ninja generator
+        run: |
+          conan profile detect -f
+          echo "" >> ~/.conan2/profiles/default
+          echo "[conf]" >> ~/.conan2/profiles/default
+          echo "tools.cmake.cmaketoolchain:generator=Ninja" >> ~/.conan2/profiles/default
+
+      - name: Prepare the build environment
+        uses: ./.github/actions/prepare-build-environment
+
+      - name: Install Conan dependencies
+        working-directory: ${{github.workspace}}
+        run: "conan install . --build=missing -s:a build_type=${{env.BUILD_TYPE}} -s:a compiler=clang -s:a compiler.version=20 -s:a compiler.cppstd=23 -s:a compiler.libcxx=libstdc++11 --output-folder ."
+
+      - name: Configure preset and build
+        working-directory: ${{github.workspace}}
+        run: |
+           cmake --preset conan-release -DWITH_CONAN=ON -DBUILD_CONTAINER=ON -DBUILD_TESTS=ON
+           cmake --build --preset conan-release
+           cp include/${PROJECT_NAME}/version.hpp build
+           cp CMakeUserPresets.json build
+
+      - name: Upload build directory
+        uses: ./.github/actions/upload-build-directory
+
+  test:
+    needs: build
+    runs-on: ${{ matrix.distro }}
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [ubuntu-26.04]
+        arch: [x86]
+    name: Test on ${{ matrix.distro }} ${{ matrix.arch }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Prepare test environment
+        uses: ./.github/actions/prepare-test-environment
+
+      - name: Download build directory
+        uses: ./.github/actions/download-build-directory
+
+      - name: Run unit tests for release
+        working-directory: ${{github.workspace}}
+        run: |
+          mv build/version.hpp include/${PROJECT_NAME}/
+          mv build/CMakeUserPresets.json ./
+          ctest --preset conan-release --verbose
+
+  package:
+    needs: test
+    runs-on: ubuntu-26.04
+    name: Package container and send to quay
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Prepare package environment
+        uses: ./.github/actions/prepare-package-environment
+
+      - name: Download build directory
+        uses: ./.github/actions/download-build-directory
+
+      - name: Package tgz
+        working-directory: ${{github.workspace}}
+        run: |
+          mv build/version.hpp include/${PROJECT_NAME}/
+          mv build/CMakeUserPresets.json ./
+          cd build/Release
+          mkdir -p artifacts
+          cpack -B artifacts TGZ
+
+      - name: Build and push image
+        env:
+          QUAY_ROBOT_PASSWORD: ${{ secrets.QUAY_ROBOT_PASSWORD }}
+          QUAY_ROBOT_USER: ${{ secrets.QUAY_ROBOT_USER }}
+        working-directory: ${{github.workspace}}
+        run: |
+          echo $QUAY_ROBOT_PASSWORD | buildah login -u $QUAY_ROBOT_USER --password-stdin quay.io
+          cd build/Release
+          cp artifacts/*tar.gz ./
+          version=$(ls *tar.gz | sed 's/uDataPacketImportProxy-//g' | sed 's/-Linux.tar.gz//g')
+          echo "Will build container version ${version}"
+          buildah bud -t ${CONTAINER_NAME}:${version} -t ${CONTAINER_NAME}:latest -f ./Dockerfile.u26
+          buildah tag ${CONTAINER_NAME}:${version} quay.io/uuss/${QUAY_DIRECTORY}:${version}
+          buildah push quay.io/uuss/${QUAY_DIRECTORY}:${version}
+
+
