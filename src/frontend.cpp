@@ -11,6 +11,7 @@
 #include <chrono>
 #include <string>
 #include <algorithm>
+#include <utility>
 #ifndef NDEBUG
 #include <cassert>
 #endif
@@ -455,7 +456,7 @@ Frontend::Frontend(
     const FrontendOptions &options,
     const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
     std::shared_ptr<spdlog::logger> logger) :
-    pImpl(std::make_unique<FrontendImpl> (options, callback, logger))
+    pImpl(std::make_unique<FrontendImpl> (options, callback, std::move(logger)))
 {
 }
 
