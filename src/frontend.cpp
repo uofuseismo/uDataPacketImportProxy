@@ -30,9 +30,9 @@
 #include "uDataPacketImportAPI/v1/data_type.pb.h"
 #include "uDataPacketImportAPI/v1/frontend.grpc.pb.h"
 #include "uDataPacketImportAPI/v1/publish_response.pb.h"
-#include "frontend.hpp"
-#include "frontendOptions.hpp"
-#include "grpcOptions.hpp"
+#include "uDataPacketImportProxy/frontend.hpp"
+#include "uDataPacketImportProxy/frontendOptions.hpp"
+#include "uDataPacketImportProxy/grpcOptions.hpp"
 import metrics;
 
 using namespace UDataPacketImportProxy;

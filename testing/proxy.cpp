@@ -16,11 +16,11 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include "uDataPacketImportAPI/v1/backend.grpc.pb.h"
 #include "uDataPacketImportAPI/v1/frontend.grpc.pb.h"
-#include "grpcOptions.hpp"
-#include "frontendOptions.hpp"
-#include "backendOptions.hpp"
-#include "proxyOptions.hpp"
-#include "proxy.hpp"
+#include "uDataPacketImportProxy/grpcOptions.hpp"
+#include "uDataPacketImportProxy/frontendOptions.hpp"
+#include "uDataPacketImportProxy/backendOptions.hpp"
+#include "uDataPacketImportProxy/proxyOptions.hpp"
+#include "uDataPacketImportProxy/proxy.hpp"
 #include "packetUtilities.hpp"
 import metrics;
 

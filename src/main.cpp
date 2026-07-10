@@ -21,8 +21,8 @@ import metrics;
 #include <absl/log/initialize.h>
 #include <opentelemetry/metrics/meter_provider.h>
 #include <opentelemetry/metrics/provider.h>
-#include "proxy.hpp"
-#include "proxyOptions.hpp"
+#include "uDataPacketImportProxy/proxy.hpp"
+#include "uDataPacketImportProxy/proxyOptions.hpp"
 #include "logger.hpp"
 //#include "uDataPacketImportProxy/version.hpp"
 

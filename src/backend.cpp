@@ -29,9 +29,9 @@
 #include <spdlog/logger.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <tbb/concurrent_queue.h>
-#include "backend.hpp"
-#include "backendOptions.hpp"
-#include "grpcOptions.hpp"
+#include "uDataPacketImportProxy/backend.hpp"
+#include "uDataPacketImportProxy/backendOptions.hpp"
+#include "uDataPacketImportProxy/grpcOptions.hpp"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 #include "uDataPacketImportAPI/v1/stream_identifier.pb.h"
 #include "uDataPacketImportAPI/v1/backend.grpc.pb.h"

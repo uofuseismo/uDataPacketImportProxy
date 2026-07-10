@@ -52,6 +52,24 @@ if (${USE_CLANG_TIDY} AND PROJECT_IS_TOP_LEVEL)
    endif()
 endif()
 
+find_package(Git)
+if (Git_FOUND)
+   execute_process(
+     COMMAND ${GIT_EXECUTABLE} --no-pager log -n 1 HEAD "--pretty=format:%h"
+     OUTPUT_VARIABLE uDataPacketImportProxy_GITTAG
+     RESULT_VARIABLE gitresult
+     ERROR_QUIET
+     OUTPUT_STRIP_TRAILING_WHITESPACE
+   )   
+   if (gitresult EQUAL 0)
+      message(STATUS "Last Git commit: ${uDataPacketImportProxy_GITTAG}")
+   endif()
+else()
+   set(uDataPacketImportProxy_GITTAG "") 
+endif()
+configure_file(${CMAKE_SOURCE_DIR}/src/version.hpp.in
+               ${CMAKE_SOURCE_DIR}/include/uDataPacketImportProxy/version.hpp)
+
 set(PROTO_SRC
     uDataPacketImportAPI/v1/data_type.proto
     uDataPacketImportAPI/v1/stream_identifier.proto
@@ -69,15 +87,17 @@ set(LIBRARY_SRC
     src/backendOptions.cpp
     src/frontend.cpp
     src/frontendOptions.cpp
-    src/duplicatePacketDetector.cpp)
+    src/duplicatePacketDetector.cpp
+    src/version.cpp)
 set(HEADER_FILES
-    src/backend.hpp
-    src/frontend.hpp
-    src/grpcOptions.hpp
-    src/proxy.hpp
-    src/backendOptions.hpp
-    src/frontendOptions.hpp
-    src/proxyOptions.hpp)
+    include/uDataPacketImportProxy/backend.hpp
+    include/uDataPacketImportProxy/frontend.hpp
+    include/uDataPacketImportProxy/grpcOptions.hpp
+    include/uDataPacketImportProxy/proxy.hpp
+    include/uDataPacketImportProxy/backendOptions.hpp
+    include/uDataPacketImportProxy/frontendOptions.hpp
+    include/uDataPacketImportProxy/proxyOptions.hpp
+    include/uDataPacketImportProxy/version.hpp)
 set(MODULE_FILES
     #src/modules/logger.cppm
     src/modules/programOptions.cppm
@@ -93,10 +113,11 @@ set_target_properties(libuDataPacketImportProxy PROPERTIES
                       CXX_STANDARD_REQUIRED YES
                       CXX_EXTENSIONS NO)
 target_include_directories(libuDataPacketImportProxy
-                           #PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/modules>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+                           PUBLIC $<INSTALL_INTERFACE:>
                           )
 target_link_libraries(libuDataPacketImportProxy
                       PUBLIC TBB::tbb
@@ -131,7 +152,7 @@ target_sources(libuDataPacketImportProxy
                PUBLIC FILE_SET
                       HEADERS
                       BASE_DIRS
-                        src
+                        include
                       FILES
                         ${HEADER_FILES}
                PUBLIC FILE_SET
@@ -164,7 +185,7 @@ set_target_properties(uDataPacketImportProxy PROPERTIES
                       CXX_STANDARD_REQUIRED YES 
                       CXX_EXTENSIONS NO) 
 target_include_directories(uDataPacketImportProxy
-                           #PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
                           )
@@ -226,6 +247,7 @@ if (PROJECT_IS_TOP_LEVEL AND ${BUILD_TESTS})
                             Threads::Threads
                             Catch2::Catch2 Catch2::Catch2WithMain)
    target_include_directories(unitTests
+                              PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
                               #PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/src/modules>
                               PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
                               PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)

@@ -14,13 +14,13 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/logger.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
-#include "proxy.hpp"
-#include "proxyOptions.hpp"
-#include "backend.hpp"
-#include "backendOptions.hpp"
-#include "frontend.hpp"
-#include "frontendOptions.hpp"
-#include "duplicatePacketDetector.hpp"
+#include "uDataPacketImportProxy/proxy.hpp"
+#include "uDataPacketImportProxy/proxyOptions.hpp"
+#include "uDataPacketImportProxy/backend.hpp"
+#include "uDataPacketImportProxy/backendOptions.hpp"
+#include "uDataPacketImportProxy/frontend.hpp"
+#include "uDataPacketImportProxy/frontendOptions.hpp"
+#include "uDataPacketImportProxy/duplicatePacketDetector.hpp"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 import metrics;
 

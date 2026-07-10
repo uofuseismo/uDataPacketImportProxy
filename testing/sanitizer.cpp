@@ -7,7 +7,7 @@
 #include <cmath>
 #include <numeric>
 #include <google/protobuf/util/time_util.h>
-#include "duplicatePacketDetector.hpp"
+#include "uDataPacketImportProxy/duplicatePacketDetector.hpp"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_template_test_macros.hpp>

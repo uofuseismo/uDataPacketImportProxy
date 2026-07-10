@@ -3,7 +3,7 @@
 #include <optional>
 #include <string>
 #include <catch2/catch_test_macros.hpp>
-#include "grpcOptions.hpp"
+#include "uDataPacketImportProxy/grpcOptions.hpp"
 
 TEST_CASE("UPacketImportProxy", "[grpcOptions]")
 {

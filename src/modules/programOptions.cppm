@@ -13,11 +13,11 @@ module;
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ptree_fwd.hpp>
 #include <boost/property_tree/ini_parser.hpp>
-#include "proxyOptions.hpp"
-#include "frontendOptions.hpp"
-#include "backendOptions.hpp"
-#include "grpcOptions.hpp"
-#include "duplicatePacketDetector.hpp"
+#include "uDataPacketImportProxy/proxyOptions.hpp"
+#include "uDataPacketImportProxy/frontendOptions.hpp"
+#include "uDataPacketImportProxy/backendOptions.hpp"
+#include "uDataPacketImportProxy/grpcOptions.hpp"
+#include "uDataPacketImportProxy/duplicatePacketDetector.hpp"
 #include "otelOptions.hpp"
 
 export module programOptions;

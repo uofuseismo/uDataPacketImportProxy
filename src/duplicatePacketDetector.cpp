@@ -1,19 +1,25 @@
-#include <iostream>
-#include <mutex>
-#include <cmath>
+//#include <iostream>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <exception>
 #include <map>
-#include <set>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #ifndef NDEBUG
 #include <cassert>
 #endif
 #include <boost/circular_buffer.hpp>
 #include <spdlog/spdlog.h>
 #include <google/protobuf/util/time_util.h>
-#include "duplicatePacketDetector.hpp"
+#include "uDataPacketImportProxy/duplicatePacketDetector.hpp"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
+#include "uDataPacketImportAPI/v1/stream_identifier.pb.h"
 
 using namespace UDataPacketImportProxy;
 
@@ -46,7 +52,7 @@ std::string toName(const UDataPacketImportAPI::V1::Packet &packet)
         = google::protobuf::util::TimeUtil::TimestampToMicroseconds(
              packet.start_time());
     auto nSamples = packet.number_of_samples();
-    double samplingRate = packet.sampling_rate();
+    const double samplingRate = packet.sampling_rate();
     if (samplingRate <= 0)
     {   
         throw std::invalid_argument("Sampling rate not positive");
@@ -128,7 +134,7 @@ public:
     std::chrono::microseconds endTime{0}; // UTC time of last sample
     // Typically `observed' sampling rates wobble around a nominal sampling rate
     int samplingRate{100};
-    int nSamples{0}; // Number of samples in packet
+    uint32_t nSamples{0}; // Number of samples in packet
 };
 
 [[nodiscard]] int estimateCapacity(const ::DataPacketHeader &header,
@@ -138,8 +144,9 @@ public:
         = std::max(0.0,
                    std::round( (header.nSamples - 1.)
                                /std::max(1, header.samplingRate)));
-    std::chrono::seconds packetDuration{static_cast<int> (duration)};
-    return std::max(10, static_cast<int> (1.5*memory.count()/duration)) + 1;
+    //std::chrono::seconds packetDuration{static_cast<int> (duration)};
+    auto dMemory = static_cast<double> (memory.count());
+    return std::max(10, static_cast<int> (1.5*dMemory/duration)) + 1;
 }
 
 }
@@ -363,7 +370,7 @@ public:
     {
         if (&impl == this){return *this;}
         {
-        std::lock_guard<std::mutex> lockGuard(impl.mMutex);
+        const std::lock_guard<std::mutex> lockGuard(impl.mMutex);
         mCircularBuffers = impl.mCircularBuffers;
         }
         mCircularBufferDuration = impl.mCircularBufferDuration;
