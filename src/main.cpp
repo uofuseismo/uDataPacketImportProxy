@@ -11,6 +11,7 @@ import metrics;
 #include <cassert>
 #endif
 #include <filesystem>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <thread>

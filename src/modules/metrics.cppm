@@ -5,7 +5,9 @@ module;
 #include <cstdint>
 #include <exception>
 #include <mutex>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <opentelemetry/nostd/shared_ptr.h>
 #include <opentelemetry/metrics/meter.h>
 #include <opentelemetry/metrics/meter_provider.h>

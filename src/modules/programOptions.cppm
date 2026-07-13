@@ -1,11 +1,15 @@
 module;
 
 #include <iostream>
-#include <string>
 #include <chrono>
-#include <fstream>
-#include <sstream>
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <sstream>
+#include <utility>
 #include <boost/program_options/value_semantic.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
