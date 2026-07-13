@@ -1,4 +1,5 @@
 #include <memory>
+#include <stdexcept>
 #include <utility>
 #include "uDataPacketImportProxy/frontendOptions.hpp"
 #include "uDataPacketImportProxy/grpcOptions.hpp"

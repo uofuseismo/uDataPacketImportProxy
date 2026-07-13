@@ -102,7 +102,7 @@ set(MODULE_FILES
     #src/modules/logger.cppm
     src/modules/programOptions.cppm
     src/modules/metrics.cppm
-    src/modules/otelSpdlogSink.cppm
+    #src/modules/otelSpdlogSink.cppm
     src/modules/getNow.cppm)
 
 add_library(libuDataPacketImportProxy STATIC ${LIBRARY_SRC})
@@ -142,6 +142,7 @@ if (${WITH_CONAN})
                                 opentelemetry-cpp::metrics
                                 opentelemetry-cpp::common
                                 opentelemetry-cpp::api)
+   target_compile_definitions(libuDataPacketImportProxy PRIVATE WITH_OTLP_GRPC)
 else()
    target_link_libraries(libuDataPacketImportProxy
                          PUBLIC opentelemetry-cpp::otlp_http_metric_exporter_builder
