@@ -1,8 +1,8 @@
+
 #include <atomic>
 #include <chrono>
 #include <exception>
 #include <functional>
-#include <stdexcept>
 #include <memory>
 #include <string>
 #include <thread>
@@ -13,7 +13,7 @@
 #include <tbb/concurrent_queue.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/logger.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/sinks/stdout_color_sinks.h> //NOLINT
 #include "uDataPacketImportProxy/proxy.hpp"
 #include "uDataPacketImportProxy/proxyOptions.hpp"
 #include "uDataPacketImportProxy/backend.hpp"
@@ -38,7 +38,15 @@ public:
     {   
         if (mLogger == nullptr)
         {
-            mLogger = spdlog::stdout_color_mt("ProxyConsole");
+            // NOLINTBEGIN(misc-include-cleaner)
+            constexpr const char *loggerName{"ProxyConsole"};
+            // N.B. stdout_color_mt throws if the name is already registered.
+            auto mLogger = spdlog::get(loggerName);
+            if (mLogger == nullptr)
+            {
+                mLogger = spdlog::stdout_color_mt(loggerName);
+            }
+            // NOLINTEND(misc-include-cleaner)
         }
         if (mOptions.getDuplicatePacketDetectorOptions())
         {
@@ -240,7 +248,7 @@ public:
 /// Constructor
 Proxy::Proxy(const ProxyOptions &options,
              std::shared_ptr<spdlog::logger> logger) :
-    pImpl(std::make_unique<ProxyImpl> (options, logger))
+    pImpl(std::make_unique<ProxyImpl> (options, std::move(logger)))
 {
 }
 
